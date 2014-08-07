@@ -1,0 +1,175 @@
+
+#include "DepProfiler.h"
+#include "llvm/DebugInfo.h"
+#include "llvm/InstVisitor.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
+
+#include <iterator>
+
+using namespace llvm;
+//using namespace depprof;
+
+
+char DependenceProfilerPass::ID = 0;
+
+RegisterPass<DependenceProfilerPass> X("depprof",
+              "Profile the dependences in a program for potential parallelism");
+
+
+struct DepVisitor : public InstVisitor<DepVisitor> {
+  DependenceProfilerPass &pass;
+
+  DepVisitor(DependenceProfilerPass &dpp)
+    : pass(dpp)
+      { }
+
+  void visitLoadInst(LoadInst &li)     { pass.handleLoad(li); }
+  void visitStoreInst(StoreInst &si)   { pass.handleStore(si); }
+
+  void visitFunction(Function &f) {
+    if (!f.isDeclaration()) {
+      pass.handleFunctionEntry(*f.getEntryBlock().getFirstInsertionPt());
+    }
+  }
+  void visitReturnInst(ReturnInst &ri) { pass.handleReturn(ri); }
+  void visitInvokeInst(InvokeInst &ii) { pass.handleInvoke(ii); }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Handle memory access events
+////////////////////////////////////////////////////////////////////////////////
+
+void
+DependenceProfilerPass::handleLoad(LoadInst &li) {
+  uint64_t size    = getAnalysis<DataLayout>().getTypeStoreSize(li.getType());
+  auto  *i64Ty     = Type::getInt64Ty(li.getContext());
+
+  Value *loaded = li.getPointerOperand();
+  Value *args[] = {
+    new BitCastInst(loaded, i8PtrTy, "", &li),
+    ConstantInt::get(i64Ty, size)
+  };
+  CallInst::Create(onLoad, args, "", &li);
+}
+
+
+void
+DependenceProfilerPass::handleStore(StoreInst &si) {
+  auto *storedTy   = si.getValueOperand()->getType();
+  uint64_t size    = getAnalysis<DataLayout>().getTypeStoreSize(storedTy);
+  auto  *i64Ty     = Type::getInt64Ty(si.getContext());
+
+  Value *loaded = si.getPointerOperand();
+  Value *args[] = {
+    new BitCastInst(loaded, i8PtrTy, "", &si),
+    ConstantInt::get(i64Ty, size)
+  };
+  CallInst::Create(onStore, args, "", &si);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Handle function entry/exit events
+////////////////////////////////////////////////////////////////////////////////
+
+void
+DependenceProfilerPass::handleFunctionEntry(Instruction &pos) {
+  auto &ctxt = pos.getContext();
+  auto *m = pos.getParent()->getParent()->getParent();
+  auto *getFramePtr = Intrinsic::getDeclaration(m, Intrinsic::frameaddress);
+  Value *args[] = { ConstantInt::get(Type::getInt32Ty(ctxt), 0) };
+  args[0] = CallInst::Create(getFramePtr, args, "", &pos);
+  CallInst::Create(onFunEntry, args, "", &pos);
+}
+
+
+void
+DependenceProfilerPass::handleReturn(ReturnInst &ri) {
+  CallInst::Create(onFunExit, "", &ri);
+}
+
+
+void
+DependenceProfilerPass::handleInvoke(InvokeInst &ii) {
+  // TODO: Implement this to handle C++ programs
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Handle loop entry/exit events
+////////////////////////////////////////////////////////////////////////////////
+
+void
+DependenceProfilerPass::handleLoop(Loop &loop) {
+  // First process the loop's entries
+  auto *entry = loop.getLoopPredecessor();
+  CallInst::Create(onLoopEntry, "", entry->getTerminator());
+
+  // Next process the loop's exits
+  SmallVector<BasicBlock*,8> exiting;
+  loop.getExitBlocks(exiting);
+  for (auto *bb : exiting) {
+    CallInst::Create(onLoopExit, "", bb->getFirstInsertionPt());
+  }
+
+  // Now handle the unique backedge
+  auto *latch = loop.getLoopLatch();
+  CallInst::Create(onLoopLatch, "", latch->getTerminator());
+
+  // Recursively traverse any subloops
+  for (auto &subloop : loop) {
+    handleLoop(*subloop);
+  }
+}
+
+
+void
+DependenceProfilerPass::initialize(llvm::Module &m) {
+  auto *voidTy = Type::getVoidTy(m.getContext());
+  auto *i64Ty  = Type::getInt64Ty(m.getContext());
+  i8PtrTy      = Type::getInt8PtrTy(m.getContext());
+
+  std::string pre = "DePpRoF_";
+  onLoad  = m.getOrInsertFunction(pre+"load", voidTy, i8PtrTy, i64Ty, nullptr);
+  onStore = m.getOrInsertFunction(pre+"store", voidTy, i8PtrTy, i64Ty, nullptr);
+  onFunEntry  = m.getOrInsertFunction(pre+"funEntry", voidTy, i8PtrTy, nullptr);
+  onFunExit   = m.getOrInsertFunction(pre+"funExit", voidTy, nullptr);
+  onLoopEntry = m.getOrInsertFunction(pre+"loopEntry", voidTy, nullptr);
+  onLoopExit  = m.getOrInsertFunction(pre+"loopExit", voidTy, nullptr);
+  onLoopLatch = m.getOrInsertFunction(pre+"loopLatch", voidTy, nullptr);
+}
+
+
+bool
+DependenceProfilerPass::runOnModule(Module &m) {
+  initialize(m);
+
+  // First instrument all reads, writes, or function entries/exits.
+  // These are all easy to find based on the instructions alone.
+  DepVisitor visitor(*this);
+  visitor.visit(m);
+
+  // Now find all loops and insert events for loop entry/exit
+  for (auto &f : m) {
+    if (f.isDeclaration()) {
+      continue;
+    }
+
+    auto &loopInfo = getAnalysis<LoopInfo>(f);
+    for (auto &loop : loopInfo) {
+      handleLoop(*loop);
+    }
+  }
+
+  // One reporting approach: install a final reporting destructor
+  // appendToGlobalDtors(m, shutdownHandler, 65535);
+  // Alternatively, you can use a destructor of a global object in your
+  // runtime library.
+
+  return true;
+}
+
