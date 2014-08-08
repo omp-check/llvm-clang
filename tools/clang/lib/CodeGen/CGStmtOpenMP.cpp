@@ -618,7 +618,7 @@ void CodeGenFunction::EmitOMPParallelDirective(const OMPParallelDirective &S) {
 	}
 
 	if(Check) {
-		fprintf(f, "%s\n", Fn->getName());
+		fprintf(f, "%s\n", Fn->getName().data());
 		fclose(f);
 	}
 
