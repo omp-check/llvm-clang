@@ -14,15 +14,21 @@
 \*===----------------------------------------------------------------------===*/
 
 #include "Profiling.h"
-#include <stdlib.h>
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #include <pthread.h>
+#include "dablooms.h"
+
+#define CAPACITY 100000
+#define ERROR_RATE .05
 
 typedef long long hrtime_t;
+scaling_bloom_t *bloom;
+int i = 0;
 
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
  * return<0 on error
@@ -67,12 +73,14 @@ static hrtime_t timing;
 
 static void outputEnd() {
   //fprintf(stderr, "outputEnd()\n");
+	free_scaling_bloom(bloom);
     timing = gethrcycle_x86() - timing;
     fprintf(stderr, "elapsed time: %f sec\n", timing*1.0/(getMHZ_x86()*1000000));
 }
 
 void llvm_start_memory_profiling() {
   //fprintf(stderr, "llvm_start_memory_profiling()\n");
+	bloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
     timing = gethrcycle_x86();
     atexit(outputEnd);
 }
@@ -85,14 +93,23 @@ long int min(long int a, long int b)
 }
 
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo) {
+	char string[100];
+
   //fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
     else
         fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);
+
+	sprintf(string, "%p_%d_%d_%d", addr, id, index, tipo);
+	if(!scaling_bloom_check(bloom, string, strlen(string))) {
+		fprintf(stderr,"INSERTED: \"%s\"\n", string);
+		scaling_bloom_add(bloom, string, strlen(string), i++);
+	}
+	else {
+		fprintf(stderr,"DUPLICATED: \"%s\"\n", string);
+	}
     
 //    pthread_t ptid = pthread_self();
 //    long int threadId = 0;
 //    memcpy(&threadId, &ptid, min(sizeof(threadId), sizeof(ptid))); 
-
-   printf("The ID of this Thread is: %ld\n", id);
 }
