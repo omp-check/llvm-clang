@@ -100,7 +100,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo) {
     else
         fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
 
-	sprintf(string, "%p_%d_%d", addr, id, index);
+	sprintf(string, "%p_%d_%d_%d", addr, id, index, tipo);
 	if(!scaling_bloom_check(bloom, string, strlen(string))) {
 		//fprintf(stderr,"INSERTED: \"%s\"\n", string);
 		scaling_bloom_add(bloom, string, strlen(string), i++);

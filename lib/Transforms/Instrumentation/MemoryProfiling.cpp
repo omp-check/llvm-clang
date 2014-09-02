@@ -79,6 +79,45 @@ void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned
   CallInst::Create(ProfFn, Args, "", Inst);
 }
 
+void RecursiveCallInstrumentation (Function *F, Value * indexValue, Value * tID, unsigned * NumCalls) {
+	errs() << "\tFUNCAO: " << F->getName() << " - " << F->hasUWTable() <<"\n";
+
+	for (Function::iterator BB = F->begin(), E = F->end(); BB != E; BB++) {
+		errs() << "\t\tBB: " << BB->getName() << "\n";
+		for (BasicBlock::iterator I=BB->begin(), E= BB->end(); I!=E; ) {
+			Instruction *CurrentInst = I;
+			Instruction *NextInst= ++I;
+
+			if(isa<CallInst>(CurrentInst)) {
+				CallInst *CI = dyn_cast<CallInst>(CurrentInst);
+				Function * f = CI->getCalledFunction();
+				if(f->getName().compare(F->getName()) != 0 && f->hasUWTable())
+					RecursiveCallInstrumentation(f, indexValue, tID, NumCalls);
+				else if(f->getName().compare(F->getName()) == 0)
+					errs() << "\t\tRECURSAO\n";
+			}
+			else if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
+				*NumCalls += 1;
+				Value *Addr;
+				if (isa<LoadInst>(CurrentInst)) {
+					LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
+					Addr = LI->getPointerOperand();
+					errs() << "\t\tLOAD: " << *Addr << " - " << *indexValue << " - " << *tID <<"\n";
+					InsertProfilingCall(F,"llvm_memory_profiling", Addr, *NumCalls, NextInst, 0, indexValue, tID);
+				}
+				else
+				{
+					StoreInst *SI = dyn_cast<StoreInst>(CurrentInst);
+					Addr = SI->getPointerOperand();
+					errs() << "\t\tSTORE: " << *Addr << " - " << *indexValue << " - " << *tID <<"\n";
+				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, *NumCalls, NextInst,1, indexValue, tID);
+				}
+			}
+
+			I = NextInst;
+		}
+	}
+}
 
 bool MemoryProfiler::runOnModule(Module &M) {
   Function *Main = M.getFunction("main");
@@ -172,6 +211,11 @@ bool MemoryProfiler::runOnModule(Module &M) {
 			
 						//BB = SplitBlock(BB, NextInst, this);
 						//E=BB->end();
+					}
+					else if(isa<CallInst>(CurrentInst)) {
+						CallInst *CI = dyn_cast<CallInst>(CurrentInst);
+						Function * f = CI->getCalledFunction();
+						RecursiveCallInstrumentation(f, indexValue, tID, &NumCalls);
 					}
 					/*else if(cond && isa<ICmpInst>(CurrentInst)) {
 						LoadInst *CI = dyn_cast<LoadInst>(CurrentInst->getOperand(0));

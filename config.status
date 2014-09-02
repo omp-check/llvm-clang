@@ -288,8 +288,8 @@ on `(hostname || uname -n) 2>/dev/null | sed 1q`
 "
 
 # Files that config.status was made for.
-config_files=" include/llvm/Config/Targets.def include/llvm/Config/AsmPrinters.def include/llvm/Config/AsmParsers.def include/llvm/Config/Disassemblers.def Makefile.config llvm.spec docs/doxygen.cfg tools/clang/docs/doxygen.cfg:../llvm/tools/clang/docs/doxygen.cfg.in bindings/ocaml/llvm/META.llvm"
-config_headers=" include/llvm/Config/config.h include/llvm/Config/llvm-config.h include/llvm/Support/DataTypes.h tools/clang/include/clang/Config/config.h:../llvm/tools/clang/include/clang/Config/config.h.in"
+config_files=" include/llvm/Config/Targets.def include/llvm/Config/AsmPrinters.def include/llvm/Config/AsmParsers.def include/llvm/Config/Disassemblers.def Makefile.config llvm.spec docs/doxygen.cfg tools/clang/docs/doxygen.cfg:./tools/clang/docs/doxygen.cfg.in bindings/ocaml/llvm/META.llvm"
+config_headers=" include/llvm/Config/config.h include/llvm/Config/llvm-config.h include/llvm/Support/DataTypes.h tools/clang/include/clang/Config/config.h:./tools/clang/include/clang/Config/config.h.in"
 config_commands=" setup Makefile Makefile.common examples/Makefile lib/Makefile runtime/Makefile test/Makefile test/Makefile.tests unittests/Makefile tools/Makefile utils/Makefile projects/Makefile bindings/Makefile bindings/ocaml/Makefile.ocaml"
 
 ac_cs_usage="\
@@ -328,8 +328,8 @@ Copyright (C) 2006 Free Software Foundation, Inc.
 This config.status script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it."
 
-ac_pwd='/home/luis/iniciacao/clang-omp/build'
-srcdir='../llvm'
+ac_pwd='/home/luis/iniciacao/clang-omp/llvm'
+srcdir='.'
 INSTALL='/usr/bin/install -c'
 # If no file are specified by the user, then we need to provide default
 # value.  By we need to know if files were specified by the user.
@@ -414,7 +414,7 @@ _ASBOX
 #
 # INIT-COMMANDS
 #
-llvm_src="../llvm"
+llvm_src="."
 
 
 # Handling of arguments.
@@ -543,17 +543,17 @@ s,@build_alias@,|#_!!_#|,g
 s,@host_alias@,|#_!!_#|,g
 s,@target_alias@,|#_!!_#|,g
 s,@LLVM_COPYRIGHT@,|#_!!_#|Copyright (c) 2003-2013 University of Illinois at Urbana-Champaign.,g
-s,@CC@,|#_!!_#|gcc,g
+s,@CC@,|#_!!_#|clang,g
 s,@CFLAGS@,|#_!!_#|,g
 s,@LDFLAGS@,|#_!!_#|,g
 s,@CPPFLAGS@,|#_!!_#|,g
-s,@ac_ct_CC@,|#_!!_#|gcc,g
+s,@ac_ct_CC@,|#_!!_#|clang,g
 s,@EXEEXT@,|#_!!_#|,g
 s,@OBJEXT@,|#_!!_#|o,g
-s,@CXX@,|#_!!_#|g++,g
+s,@CXX@,|#_!!_#|clang++,g
 s,@CXXFLAGS@,|#_!!_#|,g
-s,@ac_ct_CXX@,|#_!!_#|g++,g
-s,@CPP@,|#_!!_#|gcc -E,g
+s,@ac_ct_CXX@,|#_!!_#|clang++,g
+s,@CPP@,|#_!!_#|clang -E,g
 s,@subdirs@,|#_!!_#| projects/sample,g
 s,@ENABLE_POLLY@,|#_!!_#|1,g
 s,@LLVM_HAS_POLLY@,|#_!!_#|,g
@@ -585,7 +585,7 @@ s,@LLVM_CROSS_COMPILING@,|#_!!_#|0,g
 s,@BUILD_CC@,|#_!!_#|,g
 s,@BUILD_EXEEXT@,|#_!!_#|,g
 s,@BUILD_CXX@,|#_!!_#|,g
-s,@CVSBUILD@,|#_!!_#|,g
+s,@CVSBUILD@,|#_!!_#|CVSBUILD=1,g
 s,@ENABLE_LIBCPP@,|#_!!_#|0,g
 s,@ENABLE_CXX11@,|#_!!_#|0,g
 s,@ENABLE_CLANG_ARCMT@,|#_!!_#|1,g
@@ -673,9 +673,9 @@ s,@CONVENIENCE_LTDL_FALSE@,|#_!!_#|,g
 s,@LIBADD_DL@,|#_!!_#|-ldl,g
 s,@NO_VARIADIC_MACROS@,|#_!!_#|-Wno-variadic-macros,g
 s,@NO_MISSING_FIELD_INITIALIZERS@,|#_!!_#|-Wno-missing-field-initializers,g
-s,@COVERED_SWITCH_DEFAULT@,|#_!!_#|,g
-s,@NO_MAYBE_UNINITIALIZED@,|#_!!_#|-Wno-maybe-uninitialized,g
-s,@NO_UNINITIALIZED@,|#_!!_#|,g
+s,@COVERED_SWITCH_DEFAULT@,|#_!!_#|-Wcovered-switch-default,g
+s,@NO_MAYBE_UNINITIALIZED@,|#_!!_#|,g
+s,@NO_UNINITIALIZED@,|#_!!_#|-Wno-uninitialized,g
 s,@PYTHON@,|#_!!_#|/usr/bin/python,g
 s,@USE_UDIS86@,|#_!!_#|0,g
 s,@USE_OPROFILE@,|#_!!_#|0,g
@@ -683,7 +683,7 @@ s,@USE_INTEL_JITEVENTS@,|#_!!_#|0,g
 s,@XML2CONFIG@,|#_!!_#|,g
 s,@LIBXML2_LIBS@,|#_!!_#|,g
 s,@LIBXML2_INC@,|#_!!_#|,g
-s,@CXXCPP@,|#_!!_#|g++ -E,g
+s,@CXXCPP@,|#_!!_#|clang++ -E,g
 s,@HAVE_PTHREAD@,|#_!!_#|1,g
 s,@HAVE_LIBZ@,|#_!!_#|1,g
 s,@HUGE_VAL_SANITY@,|#_!!_#|yes,g
@@ -699,7 +699,7 @@ s,@LLVM_ETCDIR@,|#_!!_#|/usr/local/etc/llvm,g
 s,@LLVM_INCLUDEDIR@,|#_!!_#|/usr/local/include,g
 s,@LLVM_INFODIR@,|#_!!_#|/usr/local/info,g
 s,@LLVM_MANDIR@,|#_!!_#|/usr/local/man,g
-s,@LLVM_CONFIGTIME@,|#_!!_#|Mon Apr  7 18:19:29 BRT 2014,g
+s,@LLVM_CONFIGTIME@,|#_!!_#|Fri Aug 29 15:12:10 BRT 2014,g
 s,@BINDINGS_TO_BUILD@,|#_!!_#|ocaml ,g
 s,@ALL_BINDINGS@,|#_!!_#|ocaml,g
 CEOF
@@ -914,7 +914,14 @@ echo "$as_me: WARNING: $ac_file_inputs seems to ignore the --datarootdir setting
   s&@mandir@&${datarootdir}/man&g
     s&\${datarootdir}&${prefix}/share&g' ;;
 esac
-  sed "
+  sed "/^[	 ]*VPATH[	 ]*=/{
+s/:*\$(srcdir):*/:/
+s/:*\${srcdir}:*/:/
+s/:*@srcdir@:*/:/
+s/^\([^=]*=[	 ]*\):*/\1/
+s/:*$//
+s/^[^=]*=[	 ]*$//
+}
 
 :t
 /@[a-zA-Z_][a-zA-Z_0-9]*@/!b
@@ -1175,7 +1182,7 @@ s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_ETCDIR\)[	 (].*,\1define\2 "/usr/local/etc/llvm" 
 s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_INCLUDEDIR\)[	 (].*,\1define\2 "/usr/local/include" ,
 s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_INFODIR\)[	 (].*,\1define\2 "/usr/local/info" ,
 s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_MANDIR\)[	 (].*,\1define\2 "/usr/local/man" ,
-s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_CONFIGTIME\)[	 (].*,\1define\2 "Mon Apr  7 18:19:29 BRT 2014" ,
+s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_CONFIGTIME\)[	 (].*,\1define\2 "Fri Aug 29 15:12:10 BRT 2014" ,
 s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_HOST_TRIPLE\)[	 (].*,\1define\2 "x86_64-unknown-linux-gnu" ,
 s,^\([	 #]*\)[^	 ]*\([	 ]*LLVM_DEFAULT_TARGET_TRIPLE\)[	 (].*,\1define\2 "x86_64-unknown-linux-gnu" ,
 s/ $//

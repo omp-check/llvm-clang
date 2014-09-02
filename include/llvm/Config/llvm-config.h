@@ -21,7 +21,7 @@
 #define LLVM_BINDIR "/usr/local/bin"
 
 /* Time at which LLVM was configured */
-#define LLVM_CONFIGTIME "Wed Nov 13 20:11:05 BRST 2013"
+#define LLVM_CONFIGTIME "Fri Aug 29 15:12:10 BRT 2014"
 
 /* Installation directory for data files */
 #define LLVM_DATADIR "/usr/local/share/llvm"
@@ -84,16 +84,16 @@
 /* #undef LLVM_ON_WIN32 */
 
 /* Define to path to circo program if found or 'echo circo' otherwise */
-/* #undef LLVM_PATH_CIRCO */
+#define LLVM_PATH_CIRCO "/usr/bin/circo"
 
 /* Define to path to dot program if found or 'echo dot' otherwise */
-/* #undef LLVM_PATH_DOT */
+#define LLVM_PATH_DOT "/usr/bin/dot"
 
 /* Define to path to dotty program if found or 'echo dotty' otherwise */
-/* #undef LLVM_PATH_DOTTY */
+#define LLVM_PATH_DOTTY "/usr/bin/dotty"
 
 /* Define to path to fdp program if found or 'echo fdp' otherwise */
-/* #undef LLVM_PATH_FDP */
+#define LLVM_PATH_FDP "/usr/bin/fdp"
 
 /* Define to path to Graphviz program if found or 'echo Graphviz' otherwise */
 /* #undef LLVM_PATH_GRAPHVIZ */
@@ -102,10 +102,10 @@
 /* #undef LLVM_PATH_GV */
 
 /* Define to path to neato program if found or 'echo neato' otherwise */
-/* #undef LLVM_PATH_NEATO */
+#define LLVM_PATH_NEATO "/usr/bin/neato"
 
 /* Define to path to twopi program if found or 'echo twopi' otherwise */
-/* #undef LLVM_PATH_TWOPI */
+#define LLVM_PATH_TWOPI "/usr/bin/twopi"
 
 /* Define to path to xdot.py program if found or 'echo xdot.py' otherwise */
 /* #undef LLVM_PATH_XDOT_PY */
