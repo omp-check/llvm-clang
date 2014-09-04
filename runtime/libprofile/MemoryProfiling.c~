@@ -30,6 +30,8 @@ typedef long long hrtime_t;
 scaling_bloom_t *bloom;
 int i = 0;
 
+int *vec = NULL;
+
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
  * return<0 on error
  */
@@ -74,6 +76,7 @@ static hrtime_t timing;
 static void outputEnd() {
   //fprintf(stderr, "outputEnd()\n");
 	free_scaling_bloom(bloom);
+	free(vec);
     timing = gethrcycle_x86() - timing;
     fprintf(stderr, "elapsed time: %f sec\n", timing*1.0/(getMHZ_x86()*1000000));
 }
@@ -92,25 +95,39 @@ long int min(long int a, long int b)
 
 }
 
+void alloca_vec(int size) {
+	if(vec == NULL)
+		vec = (int *)malloc(size*sizeof(int));
+
+	return;
+}
+
+void setVec(int id, int val) {
+	vec[id] = val;
+	fprintf(stderr, "set vec[%d] = %d\n", id, val);
+	return;
+}
+
+int getVec(int id) {
+	return vec[id];
+}
+
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo) {
 	char string[100];
 
-  //fprintf(stderr, "llvm_memory_profiling()\n");
-  /*  if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
+  fprintf(stderr, "llvm_memory_profiling()\n");
+    if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
     else
-        fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
+        fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);
 
-	sprintf(string, "%p_%d_%d_%d", addr, id, index, tipo);
+	sprintf(string, "%p_%d_%d", addr, id, index);
 	if(!scaling_bloom_check(bloom, string, strlen(string))) {
-		//fprintf(stderr,"INSERTED: \"%s\"\n", string);
+		fprintf(stderr,"INSERTED: \"%s\"\n", string);
 		scaling_bloom_add(bloom, string, strlen(string), i++);
-	}
-	else {
-		//fprintf(stderr,"DUPLICATED: \"%s\"\n", string);
 	}
     
     pthread_t ptid = pthread_self();
     long int threadId = 0;
     memcpy(&threadId, &ptid, min(sizeof(threadId), sizeof(ptid)));
-	fprintf(stderr, "ID da thread: %d - %d\n", threadId, id);
+//	fprintf(stderr, "ID da thread: %d - %d\n", threadId, id);
 }

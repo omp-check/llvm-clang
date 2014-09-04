@@ -12,6 +12,7 @@
 #define DEBUG_TYPE "insert-edge-profiling"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "llvm/Transforms/Instrumentation.h"
 #include "ProfilingUtils.h"
 #include "llvm/ADT/Statistic.h"
@@ -27,6 +28,9 @@
 using namespace llvm;
 
 //STATISTIC(NumCallsInserted, "The # of memory calls inserted");
+
+std::set<Function *> conj;
+unsigned NumCalls = 0;
 
 namespace {
   class MemoryProfiler : public ModulePass {
@@ -76,11 +80,67 @@ void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned
   Args[3] = ConstantInt::get(UIntTy, tipo);
   //Args[3] = ConstantInt::get(StrTy, Fn->getName().data());
   
+	//errs() << "=== PROFILING BEFORE {" << *Inst << "} IN FUNCTION {" << Fn->getName() << "}\n";
   CallInst::Create(ProfFn, Args, "", Inst);
 }
 
-void RecursiveCallInstrumentation (Function *F, Value * indexValue, Value * tID, unsigned * NumCalls) {
-	errs() << "\tFUNCAO: " << F->getName() << " - " << F->hasUWTable() <<"\n";
+void InsertSetCall(Function *Fn, const char *FnName, Instruction *Inst, Value *itNO, Value *tID) {
+  LLVMContext &Context = Fn->getContext();
+  Type *VoidTy = FunctionType::getVoidTy(Context);
+  Module &M = *Fn->getParent();
+  //Type *StrTy= Type::getInt8PtrTy(Context);
+  
+  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, tID->getType(), itNO->getType(), NULL);
+
+  std::vector<Value*> Args(2);
+  Args[0] = tID;
+  Args[1] = itNO;
+  
+  CallInst::Create(ProfFn, Args, "", Inst);
+}
+
+void InsertAllocaCall(Function *Fn, const char *FnName, Instruction *Inst, Value *tID) {
+  LLVMContext &Context = Fn->getContext();
+  Type *VoidTy = FunctionType::getVoidTy(Context);
+  Module &M = *Fn->getParent();
+  //Type *StrTy= Type::getInt8PtrTy(Context);
+  
+  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, tID->getType(), NULL);
+
+  std::vector<Value*> Args(1);
+  Args[0] = tID;
+  
+  CallInst::Create(ProfFn, Args, "", Inst);
+}
+
+Value * InsertGetCall(Function *Fn, const char *FnName, Instruction *Inst, Value *tID) {
+  LLVMContext &Context = Fn->getContext();
+  Type *UIntTy = Type::getInt32Ty(Context);
+  Module &M = *Fn->getParent();
+  //Type *StrTy= Type::getInt8PtrTy(Context);
+  
+  Constant *ProfFn = M.getOrInsertFunction(FnName, UIntTy, tID->getType(), NULL);
+
+  std::vector<Value*> Args(1);
+  Args[0] = tID;
+  
+  return CallInst::Create(ProfFn, Args, "", Inst);
+}
+
+void RecursiveCallInstrumentation (Function *F) {
+
+	errs() << "\tFUNCAO: " << F->getName() << " - " << F->onlyReadsMemory() <<"\n";
+	Value * indexValue, * tID;
+
+	if(F->hasUWTable() && conj.count(F) == 0) {
+		LLVMContext &Context = F->getContext();
+		Type *UIntTy = Type::getInt32Ty(Context);
+		Module &M = *F->getParent();
+		Constant *ProfFn = M.getOrInsertFunction("omp_get_thread_num", UIntTy, NULL);
+		tID = CallInst::Create(ProfFn, "", (F->begin())->begin());
+		indexValue = InsertGetCall(F, "getVec", ++(F->begin())->begin(), tID);
+		conj.insert(F);
+	}
 
 	for (Function::iterator BB = F->begin(), E = F->end(); BB != E; BB++) {
 		errs() << "\t\tBB: " << BB->getName() << "\n";
@@ -91,38 +151,40 @@ void RecursiveCallInstrumentation (Function *F, Value * indexValue, Value * tID,
 			if(isa<CallInst>(CurrentInst)) {
 				CallInst *CI = dyn_cast<CallInst>(CurrentInst);
 				Function * f = CI->getCalledFunction();
-				if(f->getName().compare(F->getName()) != 0 && f->hasUWTable())
-					RecursiveCallInstrumentation(f, indexValue, tID, NumCalls);
-				else if(f->getName().compare(F->getName()) == 0)
-					errs() << "\t\tRECURSAO\n";
+				if(f->getName().compare(F->getName()) != 0 && f->hasUWTable() && conj.count(f) == 0) {
+					RecursiveCallInstrumentation(f);
+				}
 			}
 			else if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
-				*NumCalls += 1;
+				NumCalls += 1;
 				Value *Addr;
 				if (isa<LoadInst>(CurrentInst)) {
 					LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
 					Addr = LI->getPointerOperand();
 					errs() << "\t\tLOAD: " << *Addr << " - " << *indexValue << " - " << *tID <<"\n";
-					InsertProfilingCall(F,"llvm_memory_profiling", Addr, *NumCalls, NextInst, 0, indexValue, tID);
+					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID);
 				}
 				else
 				{
 					StoreInst *SI = dyn_cast<StoreInst>(CurrentInst);
 					Addr = SI->getPointerOperand();
 					errs() << "\t\tSTORE: " << *Addr << " - " << *indexValue << " - " << *tID <<"\n";
-				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, *NumCalls, NextInst,1, indexValue, tID);
+				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID);
 				}
 			}
 
 			I = NextInst;
 		}
 	}
+
+	errs() << "\tEND FUNCAO: " << F->getName() << "\n";
 }
 
 bool MemoryProfiler::runOnModule(Module &M) {
-  Function *Main = M.getFunction("main");
+	Function *Main = M.getFunction("main");
 
 	std::vector<Function *> v;
+	Function * fn;
 	FILE * f;
 
 	f = fopen("temp_check_functions.log", "a");
@@ -134,22 +196,33 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	char str[50];
 	while(!feof(f)) {
 		fscanf(f, "%s\n", str);
-		if(strcmp(str, "---end---"))
-		v.push_back(M.getFunction(str));
+		if(strcmp(str, "---end---")) {
+			fn = M.getFunction(str);
+			v.push_back(fn);
+		}
 	}
 
 	Value * iterador;
-	Value * tID;
+	Value * tID, * numT;
 	Value * indexValue;
 	bool instrumenta = false, first = true, cond = false;
-	unsigned NumCalls = 0;
 	int numLoops = 0, loop = 1;
 	Function::iterator init, main;
 	for (std::vector<Function *>::iterator it = v.begin(); it != v.end(); ++it) {
+		errs() << "FN: " << (*it)->getName() << "\n";
+
 		instrumenta = false;
+
 		for (Function::iterator BB = (*it)->begin(), E = (*it)->end(); BB != E; BB++) {
 			if(BB->getName().compare("omp.loop.init") == 0) {
 				init = BB;
+				LLVMContext &Context = (*it)->getContext();
+				Type *UIntTy = Type::getInt32Ty(Context);
+
+				Module &M = *(*it)->getParent();
+				Constant *ProfFn = M.getOrInsertFunction("omp_get_num_threads", UIntTy, NULL);
+				numT = CallInst::Create(ProfFn, "", BB->begin());
+				InsertAllocaCall(*it, "alloca_vec", ++(BB->begin()), numT);
 			}
 			else if(BB->getName().compare("omp.loop.main") == 0) {
 				main = BB;
@@ -165,6 +238,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 				Constant *ProfFn = M.getOrInsertFunction("omp_get_thread_num", UIntTy, NULL);
 				tID = CallInst::Create(ProfFn, "", init->begin());
 				indexValue = new LoadInst(iterador, "", BB->begin());
+				InsertSetCall(*it, "setVec", ++(BB->begin()), indexValue, tID);
+				//InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID);
 				errs() << " === START!\n";
 			}
 			else if (BB->getName().compare("omp.check.end") == 0) {
@@ -207,15 +282,11 @@ bool MemoryProfiler::runOnModule(Module &M) {
 							errs() << "\tSTORE: " << *Addr << " - " << *indexValue << " - " << *tID <<"\n";
 						     InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID);
 						}
-			
-			
-						//BB = SplitBlock(BB, NextInst, this);
-						//E=BB->end();
 					}
 					else if(isa<CallInst>(CurrentInst)) {
 						CallInst *CI = dyn_cast<CallInst>(CurrentInst);
-						Function * f = CI->getCalledFunction();
-						RecursiveCallInstrumentation(f, indexValue, tID, &NumCalls);
+						fn = CI->getCalledFunction();
+						RecursiveCallInstrumentation (fn);
 					}
 					/*else if(cond && isa<ICmpInst>(CurrentInst)) {
 						LoadInst *CI = dyn_cast<LoadInst>(CurrentInst->getOperand(0));
@@ -229,6 +300,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 			}
 		}
 	}
+
+	errs() << "END OMP_MICROTASK\n";
   
   if (Main == 0) {
     errs() << "WARNING: cannot insert memory profiling into a module"
