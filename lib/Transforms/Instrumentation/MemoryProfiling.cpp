@@ -264,6 +264,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 					if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
 						++NumCalls;
 						Value *Addr;
+						errs() << "LINHA: " << (CurrentInst->getDebugLoc()).getLine() << "\n";
 						if (isa<LoadInst>(CurrentInst)) {
 							if(!first) {
 								LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
