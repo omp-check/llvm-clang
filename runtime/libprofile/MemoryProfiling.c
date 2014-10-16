@@ -115,18 +115,18 @@ int getVec(int id) {
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst) {
 	char string[100];
 
-  fprintf(stderr, "llvm_memory_profiling()\n");
+/*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
     else
-        fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);
+        fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
 
 	fprintf(stderr, "Instruction: %p\n", inst);
 
-	sprintf(string, "%p_%d_%d", addr, id, index);
-	if(!scaling_bloom_check(bloom, string, strlen(string))) {
-		fprintf(stderr,"INSERTED: \"%s\"\n", string);
-		scaling_bloom_add(bloom, string, strlen(string), i++);
-	}
+//	sprintf(string, "%p_%d_%d_%p", addr, id, inst);
+//	if(!scaling_bloom_check(bloom, string, strlen(string))) {
+//		fprintf(stderr,"INSERTED: \"%s\"\n", string);
+//		scaling_bloom_add(bloom, string, strlen(string), i++);
+//	}
     
     pthread_t ptid = pthread_self();
     long int threadId = 0;

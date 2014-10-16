@@ -20,6 +20,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <set>
@@ -69,20 +70,23 @@ void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned
   Type *VoidTy = FunctionType::getVoidTy(Context);
   Type *UIntTy = Type::getInt32Ty(Context);
   Module &M = *Fn->getParent();
-	PointerType* PointerTy = PointerType::get(IntegerType::get(Fn->getContext(), 8), 0);
-  //Type *StrTy= Type::getInt8PtrTy(Context);
+	//Type* PointerTy = Type::getFP128Ty(Context);
+	char string[15];
+//	Type *StrTy= Type::getInt8PtrTy(Context);
+//	Type *VoidPtrTy= Type::getVoidPtrTy(Context);
   
-	errs() << "TIPO: " << *(Instrucao->getType()) << " | " << *(Addr->getType()) << "\n\n";
-  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, Addr->getType(), itNO->getType(), tID->getType(), UIntTy, PointerTy, NULL);
-	errs() << "\n\nPASSOU!\n\n\n";
-
+	sprintf(string, "%p", Instrucao);
+	StringRef ipStr = StringRef(string);
+	Value* st = ConstantDataArray::getString(Context, ipStr,true);
+	errs() << "Inst: " << Instrucao << "\nTIPO: " << /**(Instrucao->getType()) << " | " <<*/ *(st->getType()) << "\n\n";
+  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, Addr->getType(), itNO->getType(), tID->getType(), UIntTy, st->getType(), NULL);
 
   std::vector<Value*> Args(5);
   Args[0] = Addr;
   Args[1] = itNO;
   Args[2] = tID;
   Args[3] = ConstantInt::get(UIntTy, tipo);
-  Args[4] = Instrucao;
+  Args[4] = st;
   //Args[3] = ConstantInt::get(StrTy, Fn->getName().data());
   
 	//errs() << "=== PROFILING BEFORE {" << *Inst << "} IN FUNCTION {" << Fn->getName() << "}\n";
