@@ -112,15 +112,20 @@ int getVec(int id) {
 	return vec[id];
 }
 
+int * get_pc () { return __builtin_return_address(0); }
+
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst) {
 	char string[100];
+	
+//	strncpy(string, inst, 20);
 
 /*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
     else
         fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
 
-	fprintf(stderr, "Instruction: %p\n", inst);
+	fprintf(stderr, "(%p, %d, %d, %d, %p)\n", addr, index, id, tipo, inst);
+	
 
 //	sprintf(string, "%p_%d_%d_%p", addr, id, inst);
 //	if(!scaling_bloom_check(bloom, string, strlen(string))) {
