@@ -65,7 +65,7 @@ void InsertProfilingInitCall(Function *Fn, const char *FnName, Instruction *Inst
   CallInst::Create(ProfFn, "", Inst);
 }
 
-void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned CallNO, Instruction *Inst, unsigned tipo, Value *itNO, Value *tID, Value *current) {
+void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned CallNO, Instruction *Inst, unsigned tipo, Value *itNO, Value *tID, Value *current, int lineNo) {
   LLVMContext &Context = Fn->getContext();
   Type *VoidTy = FunctionType::getVoidTy(Context);
   Type *UIntTy = Type::getInt32Ty(Context);
@@ -80,14 +80,15 @@ void InsertProfilingCall(Function *Fn, const char *FnName, Value *Addr, unsigned
 //	StringRef ipStr = StringRef(string);
 //	Value* st = ConstantDataArray::getString(Context, ipStr, true);
 //	errs() << "Inst: " << Instrucao << "\nTIPO: " << /**(Instrucao->getType()) << " | " <<*/ *(st->getType()) << "\n\n";
-  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, Addr->getType(), itNO->getType(), tID->getType(), UIntTy, Int8PTy, NULL);
+  Constant *ProfFn = M.getOrInsertFunction(FnName, VoidTy, Addr->getType(), itNO->getType(), tID->getType(), UIntTy, Int8PTy, UIntTy, NULL);
 
-  std::vector<Value*> Args(5);
+  std::vector<Value*> Args(6);
   Args[0] = Addr;
   Args[1] = itNO;
   Args[2] = tID;
   Args[3] = ConstantInt::get(UIntTy, tipo);
   Args[4] = current;
+  Args[5] = ConstantInt::get(UIntTy, lineNo);
   //Args[3] = ConstantInt::get(StrTy, Fn->getName().data());
   
 	//errs() << "=== PROFILING BEFORE {" << *Inst << "} IN FUNCTION {" << Fn->getName() << "}\n";
@@ -187,14 +188,14 @@ void RecursiveCallInstrumentation (Function *F) {
 					LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
 					Addr = LI->getPointerOperand();
 					errs() << "\t\tLOAD: " << *LI << "(" << LI << ") - " << *indexValue << " - " << *tID <<"\n";
-					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, CurrentInst);
+					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, CurrentInst, (CurrentInst->getDebugLoc()).getLine());
 				}
 				else
 				{
 					StoreInst *SI = dyn_cast<StoreInst>(CurrentInst);
 					Addr = SI->getPointerOperand();
 					errs() << "\t\tSTORE: " << *SI << "(" << SI <<") - " << *indexValue << " - " << *tID <<"\n";
-				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, CurrentInst);
+				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, CurrentInst, (CurrentInst->getDebugLoc()).getLine());
 				}
 			}
 
@@ -300,8 +301,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 //								fprintf(load_list, "%p\n", CurrentInst);
 								errs() << "\tLOAD: " << *CurrentInst << "(" << CurrentInst << ") - " << *indexValue << " - " << *tID <<"\n";
 //								PC = InsertGetPC(*it, "__builtin_return_address", NextInst);
-								PC = InsertGetPC(*it, "get_pc", NextInst);
-								InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC);
+								PC = InsertGetPC(*it, "get_pc", CurrentInst);
+								InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 							}
 							else {
 								first = false;
@@ -314,8 +315,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 //							fprintf(store_list, "%p\n", CurrentInst);
 							errs() << "\tSTORE: " << *CurrentInst << "(" << CurrentInst << ") - " << *indexValue << " - " << *tID <<"\n";
 //							PC = InsertGetPC(*it, "__builtin_return_address", NextInst);
-							PC = InsertGetPC(*it, "get_pc", NextInst);
-						     InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC);
+							PC = InsertGetPC(*it, "get_pc", CurrentInst);
+						     InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 						}
 					}
 					else if(isa<CallInst>(CurrentInst)) {

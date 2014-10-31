@@ -26,11 +26,44 @@
 #define CAPACITY 100000
 #define ERROR_RATE .05
 
+typedef struct instruction{
+	void *inst;
+	int line;
+}Instruction;
+
 typedef long long hrtime_t;
-scaling_bloom_t *bloom;
-int i = 0;
+scaling_bloom_t *Rbloom;
+scaling_bloom_t *Wbloom;
+scaling_bloom_t *Ibloom;
+int Rglobal_i = 0;
+int Wglobal_i = 0;
+int inst_i = 0;
+int last = -1;
+int lock = 0;
 
 int *vec = NULL;
+Instruction instructions[50];
+
+int check_instruction(void *instr) {
+	int i;
+
+	for(i=0;i<last+1;i++) {
+		if(instructions[i].inst == instr)
+			return 1;
+	}
+
+	return 0;
+}
+
+void insert_instruction(void *instr, int line) {
+	if(!lock) lock = 1;
+	if(lock) {
+		instructions[last+1].inst = instr;
+		instructions[last+1].line = line;
+		last++;
+	}
+	lock = 0;
+}
 
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
  * return<0 on error
@@ -74,8 +107,17 @@ static hrtime_t gethrcycle_x86(void) {
 static hrtime_t timing;
 
 static void outputEnd() {
+	int i;
+
+	printf("\n\nBEGIN LISTA DE INSTRUCOES:\n");
+	for(i=0;i<last+1;i++)
+		printf("%p - %d\n", instructions[i].inst, instructions[i].line);
+	printf("END LISTA DE INSTRUCOES:\n\n");
+
   //fprintf(stderr, "outputEnd()\n");
-	free_scaling_bloom(bloom);
+	free_scaling_bloom(Rbloom);
+	free_scaling_bloom(Wbloom);
+	free_scaling_bloom(Ibloom);
 	free(vec);
     timing = gethrcycle_x86() - timing;
     fprintf(stderr, "elapsed time: %f sec\n", timing*1.0/(getMHZ_x86()*1000000));
@@ -83,7 +125,9 @@ static void outputEnd() {
 
 void llvm_start_memory_profiling() {
   //fprintf(stderr, "llvm_start_memory_profiling()\n");
-	bloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
+	Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
+	Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
+	Ibloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
     timing = gethrcycle_x86();
     atexit(outputEnd);
 }
@@ -104,7 +148,7 @@ void alloca_vec(int size) {
 
 void setVec(int id, int val) {
 	vec[id] = val;
-	fprintf(stderr, "set vec[%d] = %d\n", id, val);
+	//fprintf(stderr, "set vec[%d] = %d\n", id, val);
 	return;
 }
 
@@ -114,24 +158,93 @@ int getVec(int id) {
 
 int * get_pc () { return __builtin_return_address(0); }
 
-void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst) {
-	char string[100];
+void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst, int line) {
+	char string[50];
+	int elem, i;
+	void *temp, *Lo, *Hi;
 	
-//	strncpy(string, inst, 20);
-
 /*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
     else
         fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
 
-	fprintf(stderr, "(%p, %d, %d, %d, %p)\n", addr, index, id, tipo, inst);
+//	fprintf(stderr, "(%p, %d, %d, %d, %p)\n", addr, index, id, tipo, inst);
 	
+	elem = check_instruction(inst);
 
-//	sprintf(string, "%p_%d_%d_%p", addr, id, inst);
-//	if(!scaling_bloom_check(bloom, string, strlen(string))) {
-//		fprintf(stderr,"INSERTED: \"%s\"\n", string);
-//		scaling_bloom_add(bloom, string, strlen(string), i++);
-//	}
+	if(!elem) {
+		insert_instruction(inst, line);
+	}
+
+	if(!tipo) {
+		for(i=0;i<last+1;i++) {
+			temp = instructions[i].inst;
+			if(temp == inst)
+				continue;
+			if(inst < temp) {
+				Lo = inst;
+				Hi = temp;
+			}
+			else {
+				Lo = temp;
+				Hi = inst;
+			}
+			sprintf(string, "%p_%p", Lo, Hi);
+			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				sprintf(string, "%p_%p", addr, temp);
+				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
+					//fprintf(stderr,"RAW in (%p, %p)\n", inst, temp);
+					if(line == instructions[i].line)
+						fprintf(stderr,"RAW in line %d\n", line);
+					else
+						fprintf(stderr,"RAW between lines %d and %d\n", line, instructions[i].line);
+				}
+			}
+		}
+		sprintf(string, "%p_%p", addr, inst);
+		if(!scaling_bloom_check(Rbloom, string, strlen(string))) {
+	//		fprintf(stderr,"INSERTED READ: \"%s\"\n", string);
+			scaling_bloom_add(Rbloom, string, strlen(string), Rglobal_i++);
+		}
+	}
+	else {
+		for(i=0;i<last+1;i++) {
+			temp = instructions[i].inst;
+			if(inst < temp) {
+				Lo = inst;
+				Hi = temp;
+			}
+			else {
+				Lo = temp;
+				Hi = inst;
+			}
+			sprintf(string, "%p_%p", Lo, Hi);
+			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				sprintf(string, "%p_%p", addr, temp);
+				if(scaling_bloom_check(Rbloom, string, strlen(string))) {
+//					fprintf(stderr,"WAR in (%p, %p)\n", inst, temp);
+					if(line == instructions[i].line)
+						fprintf(stderr,"WAR in line %d\n", line);
+					else
+						fprintf(stderr,"WAR between lines %d and %d\n", line, instructions[i].line);
+				}
+				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
+					//fprintf(stderr,"WAW in (%p, %p)\n", inst, temp);
+					if(line == instructions[i].line)
+						fprintf(stderr,"WAW in line %d\n", line);
+					else
+						fprintf(stderr,"WAW between lines %d and %d\n", line, instructions[i].line);
+				}
+			}
+		}
+		sprintf(string, "%p_%p", addr, inst);
+		if(!scaling_bloom_check(Wbloom, string, strlen(string))) {
+		//	fprintf(stderr,"INSERTED WRITE: \"%s\"\n", string);
+			scaling_bloom_add(Wbloom, string, strlen(string), Wglobal_i++);
+		}
+	}
     
     pthread_t ptid = pthread_self();
     long int threadId = 0;
