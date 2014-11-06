@@ -28,7 +28,7 @@
 
 typedef struct instruction{
 	void *inst;
-	int line;
+	int line, index;
 }Instruction;
 
 typedef long long hrtime_t;
@@ -41,28 +41,34 @@ int inst_i = 0;
 int last = -1;
 int lock = 0;
 
+pthread_rwlock_t rwlock;
+
 int *vec = NULL;
 Instruction instructions[50];
 
 int check_instruction(void *instr) {
 	int i;
 
+	pthread_rwlock_rdlock(&rwlock);
 	for(i=0;i<last+1;i++) {
-		if(instructions[i].inst == instr)
+		if(instructions[i].inst == instr) {
+			pthread_rwlock_unlock(&rwlock);
 			return 1;
+		}
 	}
+	pthread_rwlock_unlock(&rwlock);
 
 	return 0;
 }
 
-void insert_instruction(void *instr, int line) {
-	if(!lock) lock = 1;
-	if(lock) {
-		instructions[last+1].inst = instr;
-		instructions[last+1].line = line;
-		last++;
-	}
-	lock = 0;
+void insert_instruction(void *instr, int line, int index) {
+
+	pthread_rwlock_wrlock(&rwlock);
+	instructions[last+1].inst = instr;
+	instructions[last+1].line = line;
+	instructions[last+1].index = index;
+	last++;
+	pthread_rwlock_unlock(&rwlock);
 }
 
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
@@ -114,6 +120,7 @@ static void outputEnd() {
 		printf("%p - %d\n", instructions[i].inst, instructions[i].line);
 	printf("END LISTA DE INSTRUCOES:\n\n");
 
+	pthread_rwlock_destroy(&rwlock);
   //fprintf(stderr, "outputEnd()\n");
 	free_scaling_bloom(Rbloom);
 	free_scaling_bloom(Wbloom);
@@ -125,9 +132,10 @@ static void outputEnd() {
 
 void llvm_start_memory_profiling() {
   //fprintf(stderr, "llvm_start_memory_profiling()\n");
-	Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
-	Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
-	Ibloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./testbloom.bin");
+	Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Rtestbloom.bin");
+	Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Wtestbloom.bin");
+	Ibloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Itestbloom.bin");
+	pthread_rwlock_init(&rwlock, NULL);
     timing = gethrcycle_x86();
     atexit(outputEnd);
 }
@@ -173,9 +181,10 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	elem = check_instruction(inst);
 
 	if(!elem) {
-		insert_instruction(inst, line);
+		insert_instruction(inst, line, index);
 	}
 
+	pthread_rwlock_rdlock(&rwlock);
 	if(!tipo) {
 		for(i=0;i<last+1;i++) {
 			temp = instructions[i].inst;
@@ -195,10 +204,15 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 				sprintf(string, "%p_%p", addr, temp);
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
 					//fprintf(stderr,"RAW in (%p, %p)\n", inst, temp);
-					if(line == instructions[i].line)
-						fprintf(stderr,"RAW in line %d\n", line);
+					if(index > instructions[i].index)
+						sprintf(string, "RAW", Lo, Hi);
 					else
-						fprintf(stderr,"RAW between lines %d and %d\n", line, instructions[i].line);
+						sprintf(string, "WAR", Lo, Hi);
+
+					if(line == instructions[i].line)
+						fprintf(stderr,"%s in line %d\n", string, line);
+					else
+						fprintf(stderr,"%s between lines %d and %d\n", string, line, instructions[i].line);
 				}
 			}
 		}
@@ -225,10 +239,15 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 				sprintf(string, "%p_%p", addr, temp);
 				if(scaling_bloom_check(Rbloom, string, strlen(string))) {
 //					fprintf(stderr,"WAR in (%p, %p)\n", inst, temp);
-					if(line == instructions[i].line)
-						fprintf(stderr,"WAR in line %d\n", line);
+					if(index > instructions[i].index)
+						sprintf(string, "WAR", Lo, Hi);
 					else
-						fprintf(stderr,"WAR between lines %d and %d\n", line, instructions[i].line);
+						sprintf(string, "RAW", Lo, Hi);
+
+					if(line == instructions[i].line)
+						fprintf(stderr,"%s in line %d\n", string, line);
+					else
+						fprintf(stderr,"%s between lines %d and %d\n", string, line, instructions[i].line);
 				}
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
 					//fprintf(stderr,"WAW in (%p, %p)\n", inst, temp);
@@ -245,6 +264,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			scaling_bloom_add(Wbloom, string, strlen(string), Wglobal_i++);
 		}
 	}
+	pthread_rwlock_unlock(&rwlock);
     
     pthread_t ptid = pthread_self();
     long int threadId = 0;
