@@ -25,7 +25,6 @@
 extern "C" {
 #include "dablooms.h"
 
-
 #define CAPACITY 100000
 #define ERROR_RATE .05
 
@@ -172,7 +171,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	char string[50];
 	int elem, i;
 	void *temp, *Lo, *Hi;
-	std::vector<Instruction> asd;
 	
 /*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);

@@ -25,7 +25,6 @@
 extern "C" {
 #include "dablooms.h"
 
-
 #define CAPACITY 100000
 #define ERROR_RATE .05
 
@@ -168,13 +167,10 @@ int getVec(int id) {
 
 void * get_pc () { return __builtin_return_address(0); }
 
-}
-
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst, int line) {
 	char string[50];
 	int elem, i;
 	void *temp, *Lo, *Hi;
-	std::vector<Instruction> asd;
 	
 /*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
@@ -286,4 +282,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
     long int threadId = 0;
     memcpy(&threadId, &ptid, min(sizeof(threadId), sizeof(ptid)));
 //	fprintf(stderr, "ID da thread: %d - %d\n", threadId, id);
+}
+
 }
