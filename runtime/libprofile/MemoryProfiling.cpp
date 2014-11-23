@@ -19,16 +19,19 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-
 #include <pthread.h>
+#include <vector>
+
+extern "C" {
 #include "dablooms.h"
+
 
 #define CAPACITY 100000
 #define ERROR_RATE .05
 
 typedef struct instruction{
 	void *inst;
-	int line, index;
+	int line, tipo;
 }Instruction;
 
 typedef long long hrtime_t;
@@ -66,7 +69,6 @@ void insert_instruction(void *instr, int line, int index) {
 	pthread_rwlock_wrlock(&rwlock);
 	instructions[last+1].inst = instr;
 	instructions[last+1].line = line;
-	instructions[last+1].index = index;
 	last++;
 	pthread_rwlock_unlock(&rwlock);
 }
@@ -164,12 +166,13 @@ int getVec(int id) {
 	return vec[id];
 }
 
-int * get_pc () { return __builtin_return_address(0); }
+void * get_pc () { return __builtin_return_address(0); }
 
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst, int line) {
 	char string[50];
 	int elem, i;
 	void *temp, *Lo, *Hi;
+	std::vector<Instruction> asd;
 	
 /*  fprintf(stderr, "llvm_memory_profiling()\n");
     if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
@@ -181,12 +184,14 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	elem = check_instruction(inst);
 
 	if(!elem) {
-		insert_instruction(inst, line, index);
+		insert_instruction(inst, line, tipo);
 	}
 
 	pthread_rwlock_rdlock(&rwlock);
 	if(!tipo) {
 		for(i=0;i<last+1;i++) {
+			if(!instructions[i].tipo)
+				continue;
 			temp = instructions[i].inst;
 			if(temp == inst)
 				continue;
@@ -198,21 +203,26 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 				Lo = temp;
 				Hi = inst;
 			}
-			sprintf(string, "%p_%p", Lo, Hi);
+			// RAW
+			sprintf(string, "%p_%p_0", Lo, Hi);
 			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+				pthread_rwlock_unlock(&rwlock);
+				pthread_rwlock_wrlock(&rwlock);
 				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				pthread_rwlock_unlock(&rwlock);
+				pthread_rwlock_rdlock(&rwlock);
 				sprintf(string, "%p_%p", addr, temp);
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
 					//fprintf(stderr,"RAW in (%p, %p)\n", inst, temp);
-					if(index > instructions[i].index)
-						sprintf(string, "RAW", Lo, Hi);
+/*					if(index > instructions[i].index)
+						sprintf(string, "RAW");
 					else
-						sprintf(string, "WAR", Lo, Hi);
+						sprintf(string, "WAR");*/
 
 					if(line == instructions[i].line)
-						fprintf(stderr,"%s in line %d\n", string, line);
+						fprintf(stderr,"RAW in line %d in address %p\n", line, addr);
 					else
-						fprintf(stderr,"%s between lines %d and %d\n", string, line, instructions[i].line);
+						fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, instructions[i].line, addr);
 				}
 			}
 		}
@@ -235,26 +245,30 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			}
 			sprintf(string, "%p_%p", Lo, Hi);
 			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+				pthread_rwlock_unlock(&rwlock);
+				pthread_rwlock_wrlock(&rwlock);
 				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				pthread_rwlock_unlock(&rwlock);
+				pthread_rwlock_rdlock(&rwlock);
 				sprintf(string, "%p_%p", addr, temp);
 				if(scaling_bloom_check(Rbloom, string, strlen(string))) {
 //					fprintf(stderr,"WAR in (%p, %p)\n", inst, temp);
-					if(index > instructions[i].index)
-						sprintf(string, "WAR", Lo, Hi);
+					/*if(index > instructions[i].index)
+						sprintf(string, "WAR");
 					else
-						sprintf(string, "RAW", Lo, Hi);
+						sprintf(string, "RAW");*/
 
 					if(line == instructions[i].line)
-						fprintf(stderr,"%s in line %d\n", string, line);
+						fprintf(stderr,"WAR in line %d in address %p\n", line, addr);
 					else
-						fprintf(stderr,"%s between lines %d and %d\n", string, line, instructions[i].line);
+						fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, instructions[i].line, addr);
 				}
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
 					//fprintf(stderr,"WAW in (%p, %p)\n", inst, temp);
 					if(line == instructions[i].line)
-						fprintf(stderr,"WAW in line %d\n", line);
+						fprintf(stderr,"WAW in line %d in address %p\n", line, addr);
 					else
-						fprintf(stderr,"WAW between lines %d and %d\n", line, instructions[i].line);
+						fprintf(stderr,"WAW between lines %d and %d in address %p\n", line, instructions[i].line, addr);
 				}
 			}
 		}
@@ -270,4 +284,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
     long int threadId = 0;
     memcpy(&threadId, &ptid, min(sizeof(threadId), sizeof(ptid)));
 //	fprintf(stderr, "ID da thread: %d - %d\n", threadId, id);
+}
+
 }
