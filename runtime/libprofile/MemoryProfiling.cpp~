@@ -21,6 +21,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <vector>
+#include <set>
+#include <string>
 
 extern "C" {
 #include "dablooms.h"
@@ -36,23 +38,25 @@ typedef struct instruction{
 typedef long long hrtime_t;
 scaling_bloom_t *Rbloom;
 scaling_bloom_t *Wbloom;
-scaling_bloom_t *Ibloom;
+std::set<std::string> IMap;
+//scaling_bloom_t *Ibloom;
 int Rglobal_i = 0;
 int Wglobal_i = 0;
-int inst_i = 0;
 int last = -1;
 int lock = 0;
 
 pthread_rwlock_t rwlock;
 
 int *vec = NULL;
-Instruction instructions[50];
+//std::map<std::pair<string, Instruction> > instructions;
+std::vector<Instruction> instructions;
+//Instruction instructions[50];
 
 int check_instruction(void *instr) {
-	int i;
+	int i, n = instructions.size();
 
 	pthread_rwlock_rdlock(&rwlock);
-	for(i=0;i<last+1;i++) {
+	for(i=0;i<n;i++) {
 		if(instructions[i].inst == instr) {
 			pthread_rwlock_unlock(&rwlock);
 			return 1;
@@ -63,12 +67,14 @@ int check_instruction(void *instr) {
 	return 0;
 }
 
-void insert_instruction(void *instr, int line, int index) {
+void insert_instruction(void *instr, int line, int tipo) {
 
 	pthread_rwlock_wrlock(&rwlock);
-	instructions[last+1].inst = instr;
-	instructions[last+1].line = line;
-	last++;
+	Instruction temp;
+	temp.inst = instr;
+	temp.line = line;
+	temp.tipo = tipo;
+	instructions.push_back(temp);
 	pthread_rwlock_unlock(&rwlock);
 }
 
@@ -114,10 +120,10 @@ static hrtime_t gethrcycle_x86(void) {
 static hrtime_t timing;
 
 static void outputEnd() {
-	int i;
+	int i, n = instructions.size();
 
 	printf("\n\nBEGIN LISTA DE INSTRUCOES:\n");
-	for(i=0;i<last+1;i++)
+	for(i=0;i<n;i++)
 		printf("%p - %d\n", instructions[i].inst, instructions[i].line);
 	printf("END LISTA DE INSTRUCOES:\n\n");
 
@@ -125,7 +131,6 @@ static void outputEnd() {
   //fprintf(stderr, "outputEnd()\n");
 	free_scaling_bloom(Rbloom);
 	free_scaling_bloom(Wbloom);
-	free_scaling_bloom(Ibloom);
 	free(vec);
     timing = gethrcycle_x86() - timing;
     fprintf(stderr, "elapsed time: %f sec\n", timing*1.0/(getMHZ_x86()*1000000));
@@ -135,7 +140,6 @@ void llvm_start_memory_profiling() {
   //fprintf(stderr, "llvm_start_memory_profiling()\n");
 	Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Rtestbloom.bin");
 	Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Wtestbloom.bin");
-	Ibloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Itestbloom.bin");
 	pthread_rwlock_init(&rwlock, NULL);
     timing = gethrcycle_x86();
     atexit(outputEnd);
@@ -187,7 +191,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 
 	pthread_rwlock_rdlock(&rwlock);
 	if(!tipo) {
-		for(i=0;i<last+1;i++) {
+		for(i=0;i<instructions.size();i++) {
 			if(!instructions[i].tipo)
 				continue;
 			temp = instructions[i].inst;
@@ -202,11 +206,12 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 				Hi = inst;
 			}
 			// RAW
-			sprintf(string, "%p_%p_0", Lo, Hi);
-			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+			sprintf(string, "%p_%p", Lo, Hi);
+			fprintf(stderr,"1 - %s - %d", string, IMap.count(string));
+			if(!IMap.count(string)) {
 				pthread_rwlock_unlock(&rwlock);
 				pthread_rwlock_wrlock(&rwlock);
-				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				IMap.insert(string);
 				pthread_rwlock_unlock(&rwlock);
 				pthread_rwlock_rdlock(&rwlock);
 				sprintf(string, "%p_%p", addr, temp);
@@ -231,7 +236,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 		}
 	}
 	else {
-		for(i=0;i<last+1;i++) {
+		for(i=0;i<instructions.size();i++) {
 			temp = instructions[i].inst;
 			if(inst < temp) {
 				Lo = inst;
@@ -242,10 +247,11 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 				Hi = inst;
 			}
 			sprintf(string, "%p_%p", Lo, Hi);
-			if(!scaling_bloom_check(Ibloom, string, strlen(string))) {
+			fprintf(stderr,"2 - %s - %d", string, IMap.count(string));
+			if(!IMap.count(string)) {
 				pthread_rwlock_unlock(&rwlock);
 				pthread_rwlock_wrlock(&rwlock);
-				scaling_bloom_add(Ibloom, string, strlen(string), inst_i++);
+				IMap.insert(string);
 				pthread_rwlock_unlock(&rwlock);
 				pthread_rwlock_rdlock(&rwlock);
 				sprintf(string, "%p_%p", addr, temp);
