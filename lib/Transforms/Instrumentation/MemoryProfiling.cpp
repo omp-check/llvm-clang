@@ -132,7 +132,7 @@ Value * InsertGetCall(Function *Fn, const char *FnName, Instruction *Inst, Value
   
   Constant *ProfFn = M.getOrInsertFunction(FnName, UIntTy, tID->getType(), NULL);
 
-  std::vector<Value*> Args(0);
+  std::vector<Value*> Args(1);
   Args[0] = tID;
   
   return CallInst::Create(ProfFn, Args, "", Inst);
@@ -184,18 +184,21 @@ void RecursiveCallInstrumentation (Function *F) {
 			else if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
 				NumCalls += 1;
 				Value *Addr;
+				Instruction *PC;
 				if (isa<LoadInst>(CurrentInst)) {
 					LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
 					Addr = LI->getPointerOperand();
 					errs() << "\t\tLOAD: " << *LI << "(" << LI << ") - " << *indexValue << " - " << *tID <<"\n";
-					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, CurrentInst, (CurrentInst->getDebugLoc()).getLine());
+					PC = InsertGetPC(F, "get_pc", CurrentInst);
+					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 				}
 				else
 				{
 					StoreInst *SI = dyn_cast<StoreInst>(CurrentInst);
 					Addr = SI->getPointerOperand();
 					errs() << "\t\tSTORE: " << *SI << "(" << SI <<") - " << *indexValue << " - " << *tID <<"\n";
-				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, CurrentInst, (CurrentInst->getDebugLoc()).getLine());
+					PC = InsertGetPC(F, "get_pc", CurrentInst);
+				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 				}
 			}
 
@@ -211,7 +214,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 
 	std::vector<Function *> v;
 	Function * fn;
-	FILE * f, * load_list, * store_list;
+	FILE * f;
 
 	f = fopen("temp_check_functions.log", "a");
 	fprintf(f, "---end---\n");

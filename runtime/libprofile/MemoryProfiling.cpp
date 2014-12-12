@@ -48,34 +48,25 @@ int lock = 0;
 pthread_rwlock_t rwlock;
 
 int *vec = NULL;
-//std::map<std::pair<string, Instruction> > instructions;
 std::vector<Instruction> instructions;
-//Instruction instructions[50];
+std::vector<int> instructionsIt;
+std::set<void *> added;
 
-int check_instruction(void *instr) {
+void check_and_insert_instruction(void *instr, int line, int tipo) {
 	int i, n = instructions.size();
+	Instruction temp;
 
-	pthread_rwlock_rdlock(&rwlock);
-	for(i=0;i<n;i++) {
-		if(instructions[i].inst == instr) {
-			pthread_rwlock_unlock(&rwlock);
-			return 1;
-		}
+	pthread_rwlock_wrlock(&rwlock);
+	if(!added.count(instr)) {
+		temp.inst = instr;
+		temp.line = line;
+		temp.tipo = tipo;
+		added.insert(instr);
+		instructions.push_back(temp);
 	}
 	pthread_rwlock_unlock(&rwlock);
 
-	return 0;
-}
-
-void insert_instruction(void *instr, int line, int tipo) {
-
-	pthread_rwlock_wrlock(&rwlock);
-	Instruction temp;
-	temp.inst = instr;
-	temp.line = line;
-	temp.tipo = tipo;
-	instructions.push_back(temp);
-	pthread_rwlock_unlock(&rwlock);
+	return;
 }
 
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
@@ -183,11 +174,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 
 //	fprintf(stderr, "(%p, %d, %d, %d, %p)\n", addr, index, id, tipo, inst);
 	
-	elem = check_instruction(inst);
-
-	if(!elem) {
-		insert_instruction(inst, line, tipo);
-	}
+	check_and_insert_instruction(inst, line, tipo);
 
 	pthread_rwlock_rdlock(&rwlock);
 	if(!tipo) {
