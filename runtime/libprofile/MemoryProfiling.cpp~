@@ -173,12 +173,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	int lastIndex;
 	bool getLock, order;
 	
-/*  fprintf(stderr, "llvm_memory_profiling()\n");
-    if (tipo==0) fprintf(stderr, "Load in %p in thread %d with iteration index %d\n", addr, id, index);
-    else
-        fprintf(stderr, "Store in %p in thread %d with iteration index %d\n", addr, id, index);*/
-
-//	fprintf(stderr, "(%p, %d, %d, %d, %p)\n", addr, index, id, tipo, inst);
 	if(!added.count(inst)) check_and_insert_instruction(inst, line, tipo);
 
 	pthread_rwlock_rdlock(&rwlock);
@@ -187,7 +181,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 		pthread_rwlock_wrlock(&bloomlock);
 		if(!scaling_bloom_check(Rbloom, string, strlen(string))) {
 			//fprintf(stderr,"READ in line %d in address %p in thread %d with index %d\n", line, addr, id, index);
-			fprintf(stderr,"READ %s\n", string);
 			scaling_bloom_add(Rbloom, string, strlen(string), Rglobal_i++);	
 		}
 		pthread_rwlock_unlock(&bloomlock);
@@ -211,7 +204,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			if(!IMap.count(string)) {
 				sprintf(string, "%p_%p", addr, temp);
 				pthread_rwlock_rdlock(&bloomlock);
-				fprintf(stderr,"CHECKR %s - %d\n", string, scaling_bloom_check(Wbloom, string, strlen(string)));
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
 					sprintf(string, "%p_%p", Lo, Hi);
 					pthread_rwlock_unlock(&rwlock);
@@ -250,7 +242,6 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 		pthread_rwlock_wrlock(&bloomlock);
 		if(!scaling_bloom_check(Wbloom, string, strlen(string))) {
 			//fprintf(stderr,"WRITE in line %d in address %p in thread %d with index %d\n", line, addr, id, index);
-			fprintf(stderr,"WRITE %s\n", string);
 			scaling_bloom_add(Wbloom, string, strlen(string), Wglobal_i++);
 		}
 		pthread_rwlock_unlock(&bloomlock);
@@ -271,8 +262,8 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			if(!IMap.count(string)) {
 				sprintf(string, "%p_%p", addr, temp);
 				pthread_rwlock_rdlock(&bloomlock);
-				fprintf(stderr,"CHECKR %s - %d\n", string, scaling_bloom_check(Rbloom, string, strlen(string)));
 				if(scaling_bloom_check(Rbloom, string, strlen(string))) {
+					pthread_rwlock_unlock(&bloomlock);
 					sprintf(string, "%p_%p", Lo, Hi);
 					pthread_rwlock_unlock(&rwlock);
 					pthread_rwlock_wrlock(&rwlock);
@@ -296,24 +287,33 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 						else
 							fprintf(stderr,"%s between lines %d and %d in address %p\n", string, instructions[i].line, line, addr);
 					}
+					pthread_rwlock_rdlock(&bloomlock);
 				}
-				fprintf(stderr,"CHECKW %s - %d\n", string, scaling_bloom_check(Wbloom, string, strlen(string)));
+
+				//fprintf(stderr,"CHECKW %s - %d\n", string, scaling_bloom_check(Wbloom, string, strlen(string)));
 				if(scaling_bloom_check(Wbloom, string, strlen(string))) {
+					pthread_rwlock_unlock(&bloomlock);
+					getLock = false;
 					//fprintf(stderr,"WAW in (%p, %p)\n", inst, temp);
 					if(line == instructions[i].line)
 						fprintf(stderr,"WAW in line %d in address %p\n", line, addr);
 					else
 						fprintf(stderr,"WAW between lines %d and %d in address %p\n", line, instructions[i].line, addr);
 				}
-				pthread_rwlock_unlock(&bloomlock);
+				else {
+					pthread_rwlock_unlock(&bloomlock);
+				}
 			}
 		}
 		
 		pthread_rwlock_unlock(&rwlock);
+		fprintf(stderr, "23 - RWUNLOCK %d\n", id);
 		pthread_rwlock_wrlock(&rwlock);
+		fprintf(stderr, "24 - WRLOCK %d\n", id);
 		instructionsIt[addr] = index;
 	}
 	pthread_rwlock_unlock(&rwlock);
+	fprintf(stderr, "25 - WRUNLOCK %d\n", id);
     
     pthread_t ptid = pthread_self();
     long int threadId = 0;
