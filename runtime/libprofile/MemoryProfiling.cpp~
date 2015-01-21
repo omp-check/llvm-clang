@@ -175,6 +175,8 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	
 	if(!added.count(inst)) check_and_insert_instruction(inst, line, tipo);
 
+	fprintf(stderr,"NEW CALL (%p %d %d %d %p %d)\n", addr, index, id, tipo, inst, line);
+
 	pthread_rwlock_rdlock(&rwlock);
 	if(!tipo) {
 		sprintf(string, "%p_%p", addr, inst);		
@@ -188,7 +190,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			if(!instructions[i].tipo)
 				continue;
 			temp = instructions[i].inst;
-			if(temp == inst) {
+			if(temp == inst || index == instructionsIt[addr]) {
 				continue;
 			}
 			if(inst < temp) {
@@ -247,7 +249,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 		pthread_rwlock_unlock(&bloomlock);
 		for(i=0;i<instructions.size();i++) {
 			temp = instructions[i].inst;
-			if(temp == inst) {
+			if(temp == inst || index == instructionsIt[addr]) {
 				continue;
 			}
 			if(inst < temp) {
@@ -307,14 +309,13 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 		}
 		
 		pthread_rwlock_unlock(&rwlock);
-		fprintf(stderr, "23 - RWUNLOCK %d\n", id);
 		pthread_rwlock_wrlock(&rwlock);
-		fprintf(stderr, "24 - WRLOCK %d\n", id);
 		instructionsIt[addr] = index;
 	}
 	pthread_rwlock_unlock(&rwlock);
-	fprintf(stderr, "25 - WRUNLOCK %d\n", id);
     
+	fprintf(stderr,"END CALL (%p %d %d %d %p %d)\n", addr, index, id, tipo, inst, line);
+
     pthread_t ptid = pthread_self();
     long int threadId = 0;
     memcpy(&threadId, &ptid, min(sizeof(threadId), sizeof(ptid)));

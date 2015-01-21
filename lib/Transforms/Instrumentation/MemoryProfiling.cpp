@@ -212,6 +212,10 @@ void RecursiveCallInstrumentation (Function *F) {
 bool MemoryProfiler::runOnModule(Module &M) {
 	Function *Main = M.getFunction("main");
 
+	if (Main != 0) {
+		InsertProfilingInitCall(Main, "llvm_start_memory_profiling", (Main->begin())->begin());
+	}
+
 	std::vector<Function *> v;
 	Function * fn;
 	FILE * f;
@@ -341,12 +345,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	}
 
 	errs() << "END OMP_MICROTASK\n";
-  
-  if (Main == 0) {
-    errs() << "WARNING: cannot insert memory profiling into a module"
-           << " with no main function!\n";
-    return false;  // No main, no instrumentation!
-  }
+ 
 
 /*
   std::set<BasicBlock*> BlocksToInstrument;
@@ -416,7 +415,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	
   
   // Add the initialization call to main.
-  InsertProfilingInitCall(Main, "llvm_start_memory_profiling");
+  
   return true;
 }
 
