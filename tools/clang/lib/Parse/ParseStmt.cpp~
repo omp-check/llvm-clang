@@ -308,8 +308,6 @@ Retry:
   case tok::annot_pragma_openmp:
     return ParseOpenMPDeclarativeOrExecutableDirective(!OnlyStatement);
 
-	/* TSS PRAGMA */
-
   case tok::annot_pragma_tss:
 	return ParseTSSDeclarativeOrExecutableDirective(!OnlyStatement);
 

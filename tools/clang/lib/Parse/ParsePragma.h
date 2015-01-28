@@ -113,6 +113,15 @@ public:
                             Token &FirstToken);
 };
 
+
+	/* TSS PRAGMA */
+class PragmaTSSHandler : public PragmaHandler {
+public:
+  PragmaTSSHandler() : PragmaHandler("tss") { }
+  virtual void HandlePragma(Preprocessor &PP, PragmaIntroducerKind Introducer,
+                            Token &FirstToken);
+};
+
 /// PragmaCommentHandler - "\#pragma comment ...".
 class PragmaCommentHandler : public PragmaHandler {
 public:

@@ -2156,8 +2156,6 @@ private:
                                 SmallVectorImpl<Expr *> &VarList,
                                 bool AllowScopeSpecifier);
 
-	/* TSS PRAGMA */
-
   StmtResult ParseTSSDeclarativeOrExecutableDirective(
                                                 bool StandAloneAllowed);
 

@@ -107,6 +107,12 @@ Parser::Parser(Preprocessor &pp, Sema &actions, bool skipFunctionBodies)
     PP.AddPragmaHandler(MSCommentHandler.get());
   }
 
+	/* TSS PRAGMA*/
+	TSSHandler.reset(new PragmaTSSHandler());
+	PP.AddPragmaHandler(TSSHandler.get());
+
+
+
   CommentSemaHandler.reset(new ActionCommentHandler(actions));
   PP.addCommentHandler(CommentSemaHandler.get());
 

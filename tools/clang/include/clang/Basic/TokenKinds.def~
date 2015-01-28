@@ -663,8 +663,8 @@ ANNOTATION(pragma_openmp)
 ANNOTATION(pragma_openmp_end)
 
 	/* TSS PRAGMA */
-ANNOTATION(pragma_tss)
-ANNOTATION(pragma_tss_end)
+ANNOTATION(pragma_openmp)
+ANNOTATION(pragma_openmp_end)
 
 #undef ANNOTATION
 #undef TESTING_KEYWORD
