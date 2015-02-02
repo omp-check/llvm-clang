@@ -32,7 +32,7 @@ extern "C" {
 #include "dablooms.h"
 
 #define CAPACITY 100000
-#define ERROR_RATE .005
+#define ERROR_RATE .05
 
 typedef struct instruction{
 	void *inst;
@@ -42,7 +42,9 @@ typedef struct instruction{
 typedef long long hrtime_t;
 scaling_bloom_t *Rbloom;
 scaling_bloom_t *Wbloom;
-std::set<std::string> IMap;
+//std::set<std::string> IMap;
+//std::map<void *, std::map<void *, char> > IMap;
+std::map<void *, std::map<void *, char> > IMap;
 //scaling_bloom_t *Ibloom;
 int Rglobal_i = 0;
 int Wglobal_i = 0;
@@ -184,13 +186,133 @@ int getVec(int id) {
 
 void * get_pc () { return __builtin_return_address(0); }
 
+void MemRead(void *addr, int index, int id, void *inst, int line) {
+	Instruction instruc;
+	bool first = false;
+
+	instruc.inst = inst;
+	instruc.line = line;
+	instruc.tipo = 0;
+
+	//std::map<void *, std::map<void *, Instruction> >::iterator itWhoAdd = RinstructionsAddr.find(addr);
+
+
+	pthread_rwlock_rdlock(&Wbloomlock);
+	std::map<void *, std::map<void *, Instruction> >::iterator itMap = WinstructionsAddr.find(addr);
+	pthread_rwlock_unlock(&Wbloomlock);
+
+	if (itMap != WinstructionsAddr.end()) {
+		std::map<void *, Instruction> mapThread = (*itMap).second;
+		std::map<void *, Instruction>::iterator itMapThread;
+
+		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
+			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+				IMap[inst][(*itMapThread).second.inst] = 't';
+				IMap[(*itMapThread).second.inst][inst] = 't';
+				fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+			}
+		}
+	}
+
+
+	if (RinstructionsAddr.find(addr) == RinstructionsAddr.end()) {
+		std::map<void *, Instruction> auxMap;
+		auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
+		
+		//if (RinstructionsAddr.find(addr) == RinstructionsAddr.end()) {
+			pthread_rwlock_wrlock(&Rbloomlock);
+			RinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));
+			pthread_rwlock_unlock(&Rbloomlock);
+		//}
+	}
+	else {
+		
+		if (!(*(RinstructionsAddr.find(addr))).second.count(inst)) {
+			pthread_rwlock_wrlock(&Rbloomlock);
+			(*(RinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
+			pthread_rwlock_unlock(&Rbloomlock);
+		}
+		
+	}	
+
+	return;
+}
+
+void MemWrite(void *addr, int index, int id, void *inst, int line) {
+	Instruction instruc;
+
+	instruc.inst = inst;
+	instruc.line = line;
+	instruc.tipo = 0;
+
+	//std::map<void *, std::map<void *, Instruction> >::iterator itWhoAdd = WinstructionsAddr.find(addr);
+
+
+	//pthread_rwlock_rdlock(&Rbloomlock);
+	std::map<void *, std::map<void *, Instruction> >::iterator itMap = RinstructionsAddr.find(addr);
+	//pthread_rwlock_unlock(&Rbloomlock);
+
+	if (itMap != RinstructionsAddr.end()) {
+		std::map<void *, Instruction> mapThread = (*itMap).second;
+		std::map<void *, Instruction>::iterator itMapThread;
+
+		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
+			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+				IMap[inst][(*itMapThread).second.inst] = 't';
+				IMap[(*itMapThread).second.inst][inst] = 't';
+				fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+			}
+		}
+	}
+
+	//pthread_rwlock_rdlock(&Wbloomlock);
+	itMap = WinstructionsAddr.find(addr);
+	//pthread_rwlock_unlock(&Wbloomlock);
+
+	if (itMap != WinstructionsAddr.end()) {
+		std::map<void *, Instruction> mapThread = (*itMap).second;
+		std::map<void *, Instruction>::iterator itMapThread;
+
+		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
+			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+				IMap[inst][(*itMapThread).second.inst] = 't';
+				IMap[(*itMapThread).second.inst][inst] = 't';
+				fprintf(stderr,"WAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).second.inst, (*itMapThread).second.line, addr);
+			}
+		}
+	}
+	
+	if (WinstructionsAddr.find(addr) == WinstructionsAddr.end()) {
+		std::map<void *, Instruction> auxMap;
+		auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
+		
+		//if (WinstructionsAddr.find(addr) == WinstructionsAddr.end()) {
+			pthread_rwlock_wrlock(&Wbloomlock);
+			WinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));
+			pthread_rwlock_unlock(&Wbloomlock);
+		//}
+		
+	}
+	else {
+		
+		if (!(*(WinstructionsAddr.find(addr))).second.count(inst)) {
+			pthread_rwlock_wrlock(&Wbloomlock);
+			(*(WinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
+			pthread_rwlock_unlock(&Wbloomlock);
+		}
+		
+	}
+
+	return;
+}
+
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst, int line) {
 	char string[50] = "0xfakdkaasd_0xajd234h";
 	int elem, i;
 	void *temp, *Lo, *Hi;
 	bool getLock, order;
-	Instruction instruc;
 	Instruction Tinst;
+	Instruction instruc;
 	std::map<void *, Instruction>::iterator it;
 	std::pair<void *, void*> p;
 	
@@ -254,50 +376,49 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 
 		
 		if(!tipo) {
+			MemRead(addr, index, id, inst, line);
 			/*pthread_rwlock_rdlock(&Wbloomlock);
-			for(it = WinstructionsAddr[addr].begin();it != WinstructionsAddr[addr].end();++it) {
-				Tinst = it->second;
-				if(Tinst.inst == inst || index == instructionsIt[addr]) {
-					continue;
-				}
-			
-				if(inst < Tinst.inst) {
-					Lo = inst;
-					Hi = Tinst.inst;
-				}
-				else {
-					Lo = Tinst.inst;
-					Hi = inst;
-				}
-
-				sprintf(string, "%p_%p", Lo, Hi);
-				if(!IMap.count(string)) {
-					pthread_rwlock_wrlock(&imaplock);
-					if(!IMap.count(string)) {
-						IMap.insert(string);
-					}
-					pthread_rwlock_unlock(&imaplock);
-					if(index > instructionsIt[addr]) {
-						sprintf(string, "RAW");
-						order = true;
-					}
-					else {
-						sprintf(string, "WAR");
-						order = false;
+			std::map<void *, std::map<void *, Instruction> >::iterator itMap = WinstructionsAddr.find(addr);
+			if(itMap != WinstructionsAddr.end()) {
+				for(it = (*itMap).second.begin();it != (*itMap).second.end();++it) {
+					Tinst = it->second;
+					if(Tinst.inst == inst || index == instructionsIt[addr]) {
+						continue;
 					}
 
-					if(line == Tinst.line) {
-						fprintf(stderr,"%s in line %d in address %p\n", string, line, addr);
-					}
-					else {
-						if(order)
-							fprintf(stderr,"%s between lines %d and %d in address %p\n", string, line, Tinst.line, addr);
-						else
-							fprintf(stderr,"%s between lines %d and %d in address %p\n", string, Tinst.line, line, addr);
+					getLock = false;
+					if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+						pthread_rwlock_wrlock(&imaplock);
+						if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+							IMap[inst][Tinst.inst] = 't';
+							IMap[Tinst.inst][inst] = 't';
+							getLock = true;
+						}
+						pthread_rwlock_unlock(&imaplock);
+						if(getLock) {
+							if(index > instructionsIt[addr]) {
+								sprintf(string, "RAW");
+								order = true;
+							}
+							else {
+								sprintf(string, "WAR");
+								order = false;
+							}
+
+							if(line == Tinst.line) {
+								fprintf(stderr,"%s in line %d in address %p\n", string, line, addr);
+							}
+							else {
+								if(order)
+									fprintf(stderr,"%s between lines %d and %d in address %p\n", string, line, Tinst.line, addr);
+								else
+									fprintf(stderr,"%s between lines %d and %d in address %p\n", string, Tinst.line, line, addr);
+							}
+						}
 					}
 				}
 			}
-			pthread_rwlock_unlock(&Wbloomlock);*/
+			pthread_rwlock_unlock(&Wbloomlock);
 			
 			if(!RinstructionsAddr.count(addr) || !RinstructionsAddr[addr].count(inst)) {
 				pthread_rwlock_wrlock(&Rbloomlock);
@@ -305,82 +426,82 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 					RinstructionsAddr[addr][inst] = instruc;
 				}
 				pthread_rwlock_unlock(&Rbloomlock);
-			}
+			}*/
 		}
 		else {
+			MemWrite(addr, index, id, inst, line);			
 			/*pthread_rwlock_rdlock(&Rbloomlock);
-			for(it = RinstructionsAddr[addr].begin();it != RinstructionsAddr[addr].end();++it) {
-				Tinst = it->second;
-				if(Tinst.inst == inst || index == instructionsIt[addr]) {
-					continue;
-				}
-				if(inst < Tinst.inst) {
-					Lo = inst;
-					Hi = Tinst.inst;
-				}
-				else {
-					Lo = Tinst.inst;
-					Hi = inst;
-				}
-				sprintf(string, "%p_%p", Lo, Hi);
-				if(!IMap.count(string)) {
-					pthread_rwlock_wrlock(&imaplock);
-					if(!IMap.count(string)) {
-						IMap.insert(string);
-					}
-					pthread_rwlock_unlock(&imaplock);
-					if(index > instructionsIt[addr]) {
-						sprintf(string, "WAR");
-						order = true;
-					}
-					else {
-						sprintf(string, "RAW");
-						order = false;
+			std::map<void *, std::map<void *, Instruction> >::iterator itMap = RinstructionsAddr.find(addr);
+			if(itMap != RinstructionsAddr.end()) {
+				for(it = (*itMap).second.begin();it != (*itMap).second.end();++it) {
+					Tinst = it->second;
+					if(Tinst.inst == inst || index == instructionsIt[addr]) {
+						continue;
 					}
 
-					if(line == Tinst.line) {
-						fprintf(stderr,"%s in line %d in address %p\n", string, line, addr);
-					}
-					else {
-						if(order)
-							fprintf(stderr,"%s between lines %d and %d in address %p\n", string, line, Tinst.line, addr);
-						else
-							fprintf(stderr,"%s between lines %d and %d in address %p\n", string, Tinst.line, line, addr);
+					getLock = false;
+					if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+						pthread_rwlock_wrlock(&imaplock);
+						if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+							IMap[inst][Tinst.inst] = 't';
+							IMap[Tinst.inst][inst] = 't';
+							getLock = true;
+						}
+						pthread_rwlock_unlock(&imaplock);
+			
+						if(getLock) {
+							if(index > instructionsIt[addr]) {
+								sprintf(string, "WAR");
+								order = true;
+							}
+							else {
+								sprintf(string, "RAW");
+								order = false;
+							}
+
+							if(line == Tinst.line) {
+								fprintf(stderr,"%s in line %d in address %p\n", string, line, addr);
+							}
+							else {
+								if(order)
+									fprintf(stderr,"%s between lines %d and %d in address %p\n", string, line, Tinst.line, addr);
+								else
+									fprintf(stderr,"%s between lines %d and %d in address %p\n", string, Tinst.line, line, addr);
+							}
+						}
 					}
 				}
 			}
 			pthread_rwlock_unlock(&Rbloomlock);
 
 			pthread_rwlock_rdlock(&Wbloomlock);
-			for(it = WinstructionsAddr[addr].begin();it != WinstructionsAddr[addr].end();++it) {
-				//pthread_rwlock_unlock(&Wbloomlock);
-				Tinst = it->second;
-				if(Tinst.inst == inst || index == instructionsIt[addr]) {
-					continue;
-				}
-				if(inst < Tinst.inst) {
-					Lo = inst;
-					Hi = Tinst.inst;
-				}
-				else {
-					Lo = Tinst.inst;
-					Hi = inst;
-				}
-				sprintf(string, "%p_%p", Lo, Hi);
-				if(!IMap.count(string)) {
-					pthread_rwlock_wrlock(&imaplock);
-					if(!IMap.count(string)) {
-						IMap.insert(string);
+			itMap = WinstructionsAddr.find(addr);
+			if(itMap != WinstructionsAddr.end()) {
+				for(it = (*itMap).second.begin();it != (*itMap).second.end();++it) {
+					Tinst = it->second;
+					if(Tinst.inst == inst || index == instructionsIt[addr]) {
+						continue;
 					}
-					pthread_rwlock_unlock(&imaplock);
-					if(line == Tinst.line)
-						fprintf(stderr,"WAW in line %d in address %p\n", line, addr);
-					else
-						fprintf(stderr,"WAW between lines %d and %d in address %p\n", line, Tinst.line, addr);
+
+					getLock = false;
+					if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+						pthread_rwlock_wrlock(&imaplock);
+						if(!IMap.count(inst) || !IMap[inst].count(Tinst.inst)) {
+							IMap[inst][Tinst.inst] = 't';
+							IMap[Tinst.inst][inst] = 't';
+							getLock = true;
+						}
+						pthread_rwlock_unlock(&imaplock);
+						if(getLock) {
+							if(line == Tinst.line)
+								fprintf(stderr,"WAW in line %d in address %p\n", line, addr);
+							else
+								fprintf(stderr,"WAW between lines %d and %d in address %p\n", line, Tinst.line, addr);
+						}
+					}
 				}
-				//pthread_rwlock_rdlock(&Wbloomlock);
 			}
-			pthread_rwlock_unlock(&Wbloomlock);*/
+			pthread_rwlock_unlock(&Wbloomlock);
 
 			if(!WinstructionsAddr.count(addr) || !WinstructionsAddr[addr].count(inst)) {
 				pthread_rwlock_wrlock(&Wbloomlock);
@@ -391,10 +512,10 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			}
 		}
 		
-		//pthread_rwlock_wrlock(&rwlock);
-		//instructionsIt[addr] = index;
-		//pthread_rwlock_unlock(&rwlock);
-	//}
+		pthread_rwlock_wrlock(&rwlock);
+		instructionsIt[addr] = index;
+		pthread_rwlock_unlock(&rwlock);*/
+	}
     
 	//fprintf(stderr,"END CALL (%p %d %d %d %p %d)\n", addr, index, id, tipo, inst, line);
 
