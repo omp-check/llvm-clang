@@ -241,8 +241,10 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	Value * tID, * numT;
 	Value * indexValue;
 	bool instrumenta = false, first = true, cond = false;
+	bool LoadArray = false;
 	int numLoops = 0, loop = 1;
 	Instruction *PC;
+	GetElementPtrInst *GEPI;
 	Function::iterator init, main;
 	for (std::vector<Function *>::iterator it = v.begin(); it != v.end(); ++it) {
 		errs() << "FN: " << (*it)->getName() << "\n";
@@ -297,10 +299,12 @@ bool MemoryProfiler::runOnModule(Module &M) {
 				for (BasicBlock::iterator I=BB->begin(), E= BB->end(); I!=E; ) {
 					Instruction *CurrentInst = I;
 					Instruction *NextInst= ++I;
-		
+
+					LoadArray = false;
 					if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
 						++NumCalls;
 						Value *Addr;
+						Value *Val;
 						
 						errs() << "LINHA: " << (CurrentInst->getDebugLoc()).getLine() << "\n";
 						if (isa<LoadInst>(CurrentInst)) {
@@ -310,7 +314,15 @@ bool MemoryProfiler::runOnModule(Module &M) {
 								Addr = LI->getPointerOperand();
 //								fprintf(load_list, "%p\n", CurrentInst);
 								errs() << "\tLOAD (" << Val->getName() << "): " << *CurrentInst << "(" << CurrentInst << ") - " << *indexValue << " - " << *tID << " - " << Val->getType()->isPointerTy() << " - " << Addr->getName() << "\n";
-								if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private."))) {
+								if (isa<GetElementPtrInst>(NextInst)) {
+									GEPI = dyn_cast<GetElementPtrInst>(NextInst);
+									Val = GEPI->getPointerOperand();
+									if(Val == LI) {
+										LoadArray = true;
+									}
+								}
+								if(Addr == GEPI) LoadArray = true;
+								if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !LoadArray) {
 									//PC = InsertGetPC(*it, "get_pc", CurrentInst);
 									/*InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC,
 	 (CurrentInst->getDebugLoc()).getLine());*/
