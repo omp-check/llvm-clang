@@ -50,6 +50,7 @@ int Rglobal_i = 0;
 int Wglobal_i = 0;
 int last = -1;
 int lock = 0;
+bool clean = false;
 
 pthread_rwlock_t rwlock, Rbloomlock, Wbloomlock, bloomlock, imaplock;
 
@@ -186,6 +187,22 @@ int getVec(int id) {
 
 void * get_pc () { return __builtin_return_address(0); }
 
+void clear_instrumentation () {
+	if(!clean) {
+		pthread_rwlock_wrlock(&bloomlock);
+		if(!clean) {
+			WinstructionsAddr.clear();
+			//WinstructionsAddr = std::map<void *, std::map<void *, Instruction> >();
+			//RinstructionsAddr = std::map<void *, std::map<void *, Instruction> >();
+			RinstructionsAddr.clear();
+			//IMap.clear();
+			clean = true;
+		}
+		pthread_rwlock_unlock(&bloomlock);
+	}
+	return; 
+}
+
 void MemRead(void *addr, int index, int id, void *inst, int line) {
 	Instruction instruc;
 	bool first = false;
@@ -197,9 +214,9 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 	//std::map<void *, std::map<void *, Instruction> >::iterator itWhoAdd = RinstructionsAddr.find(addr);
 
 
-	pthread_rwlock_rdlock(&Wbloomlock);
+	//pthread_rwlock_rdlock(&Wbloomlock);
 	std::map<void *, std::map<void *, Instruction> >::iterator itMap = WinstructionsAddr.find(addr);
-	pthread_rwlock_unlock(&Wbloomlock);
+	//pthread_rwlock_unlock(&Wbloomlock);
 
 	if (itMap != WinstructionsAddr.end()) {
 		std::map<void *, Instruction> mapThread = (*itMap).second;
@@ -207,32 +224,33 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
 			if(IMap[inst][(*itMapThread).second.inst] != 't') {
-				IMap[inst][(*itMapThread).second.inst] = 't';
-				IMap[(*itMapThread).second.inst][inst] = 't';
-				fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				pthread_rwlock_wrlock(&imaplock);
+				if(IMap[inst][(*itMapThread).second.inst] != 't') {
+					IMap[inst][(*itMapThread).second.inst] = 't';
+					IMap[(*itMapThread).second.inst][inst] = 't';
+					fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				}
+				pthread_rwlock_unlock(&imaplock);
 			}
 		}
 	}
 
 
 	if (RinstructionsAddr.find(addr) == RinstructionsAddr.end()) {
-		std::map<void *, Instruction> auxMap;
-		auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
-		
-		//if (RinstructionsAddr.find(addr) == RinstructionsAddr.end()) {
-			pthread_rwlock_wrlock(&Rbloomlock);
-			RinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));
-			pthread_rwlock_unlock(&Rbloomlock);
-		//}
+		pthread_rwlock_wrlock(&Rbloomlock);
+		if (RinstructionsAddr.find(addr) == RinstructionsAddr.end()) {
+			std::map<void *, Instruction> auxMap;
+			auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
+			RinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));		
+		}
+		pthread_rwlock_unlock(&Rbloomlock);
 	}
 	else {
-		
 		if (!(*(RinstructionsAddr.find(addr))).second.count(inst)) {
 			pthread_rwlock_wrlock(&Rbloomlock);
 			(*(RinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
 			pthread_rwlock_unlock(&Rbloomlock);
 		}
-		
 	}	
 
 	return;
@@ -258,9 +276,13 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
 			if(IMap[inst][(*itMapThread).second.inst] != 't') {
-				IMap[inst][(*itMapThread).second.inst] = 't';
-				IMap[(*itMapThread).second.inst][inst] = 't';
-				fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				pthread_rwlock_wrlock(&imaplock);
+				if(IMap[inst][(*itMapThread).second.inst] != 't') {
+					IMap[inst][(*itMapThread).second.inst] = 't';
+					IMap[(*itMapThread).second.inst][inst] = 't';
+					fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				}
+				pthread_rwlock_unlock(&imaplock);
 			}
 		}
 	}
@@ -275,32 +297,32 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
 			if(IMap[inst][(*itMapThread).second.inst] != 't') {
-				IMap[inst][(*itMapThread).second.inst] = 't';
-				IMap[(*itMapThread).second.inst][inst] = 't';
-				fprintf(stderr,"WAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).second.inst, (*itMapThread).second.line, addr);
+				pthread_rwlock_wrlock(&imaplock);
+				if(IMap[inst][(*itMapThread).second.inst] != 't') {
+					IMap[inst][(*itMapThread).second.inst] = 't';
+					IMap[(*itMapThread).second.inst][inst] = 't';
+					fprintf(stderr,"WAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).second.inst, (*itMapThread).second.line, addr);
+				}
+				pthread_rwlock_unlock(&imaplock);
 			}
 		}
 	}
 	
 	if (WinstructionsAddr.find(addr) == WinstructionsAddr.end()) {
-		std::map<void *, Instruction> auxMap;
-		auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
-		
-		//if (WinstructionsAddr.find(addr) == WinstructionsAddr.end()) {
-			pthread_rwlock_wrlock(&Wbloomlock);
-			WinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));
-			pthread_rwlock_unlock(&Wbloomlock);
-		//}
-		
+		pthread_rwlock_wrlock(&Wbloomlock);
+		if (WinstructionsAddr.find(addr) == WinstructionsAddr.end()) {
+			std::map<void *, Instruction> auxMap;
+			auxMap.insert(std::pair<void *, Instruction>(inst, instruc));
+			WinstructionsAddr.insert(std::pair<void *, std::map<void *, Instruction> >(addr, auxMap));		
+		}
+		pthread_rwlock_unlock(&Wbloomlock);
 	}
 	else {
-		
 		if (!(*(WinstructionsAddr.find(addr))).second.count(inst)) {
 			pthread_rwlock_wrlock(&Wbloomlock);
 			(*(WinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
 			pthread_rwlock_unlock(&Wbloomlock);
 		}
-		
 	}
 
 	return;
@@ -320,6 +342,8 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	instruc.inst = inst;
 	instruc.line = line;
 	instruc.tipo = tipo;
+
+	clean = false;
 
 	//if(!added.count(inst)) {
 	//	check_and_insert_instruction(inst, line, tipo);
