@@ -176,19 +176,20 @@ void alloca_vec(int size) {
 }
 
 void setVec(int id, int val) {
-	vec[id] = val;
+	//vec[id] = val;
 	//fprintf(stderr, "set vec[%d] = %d\n", id, val);
 	return;
 }
 
-int getVec(int id) {
-	return vec[id];
+long int getVec(int id) {
+	//return vec[id];
+	return 0;
 }
 
 void * get_pc () { return __builtin_return_address(0); }
 
 void clear_instrumentation () {
-	if(!clean) {
+	/*if(!clean) {
 		pthread_rwlock_wrlock(&bloomlock);
 		if(!clean) {
 			WinstructionsAddr.clear();
@@ -199,7 +200,7 @@ void clear_instrumentation () {
 			clean = true;
 		}
 		pthread_rwlock_unlock(&bloomlock);
-	}
+	}*/
 	return; 
 }
 

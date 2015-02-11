@@ -154,17 +154,20 @@ Instruction *InsertGetPC(Function *Fn, const char *FnName, Instruction *Inst) {
 }
 
 void RecursiveCallInstrumentation (Function *F) {
+	Instruction *PC;
 
 	errs() << "\tFUNCAO: " << F->getName() << " - " << F->onlyReadsMemory() <<"\n";
 	Value * indexValue, * tID;
 
 	if(F->hasUWTable() && conj.count(F) == 0) {
+		errs() << "F INIT\n";
 		LLVMContext &Context = F->getContext();
 		Type *UIntTy = Type::getInt32Ty(Context);
 		Module &M = *F->getParent();
 		Constant *ProfFn = M.getOrInsertFunction("omp_get_thread_num", UIntTy, NULL);
 		tID = CallInst::Create(ProfFn, "", (F->begin())->begin());
-		//indexValue = InsertGetCall(F, "getVec", ++(F->begin())->begin(), tID);
+		indexValue = InsertGetCall(F, "getVec", ++(F->begin())->begin(), tID);
+		PC = InsertGetPC(F, "get_pc", (F->begin())->begin());
 		conj.insert(F);
 	}
 
@@ -184,13 +187,12 @@ void RecursiveCallInstrumentation (Function *F) {
 			else if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
 				NumCalls += 1;
 				Value *Addr;
-				Instruction *PC = NULL;
 				if (isa<LoadInst>(CurrentInst)) {
 					LoadInst *LI = dyn_cast<LoadInst>(CurrentInst);
 					Addr = LI->getPointerOperand();
 					errs() << "\t\tLOAD: " << *LI << "(" << LI << ") - " << *indexValue << " - " << *tID <<"\n";
 					//PC = InsertGetPC(F, "get_pc", CurrentInst);
-					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 				}
 				else
 				{
@@ -198,7 +200,7 @@ void RecursiveCallInstrumentation (Function *F) {
 					Addr = SI->getPointerOperand();
 					errs() << "\t\tSTORE: " << *SI << "(" << SI <<") - " << *indexValue << " - " << *tID <<"\n";
 					//PC = InsertGetPC(F, "get_pc", CurrentInst);
-				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
 				}
 			}
 
@@ -240,7 +242,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	Value * iterador;
 	Value * tID, * numT;
 	Value * indexValue;
-	bool instrumenta = false, first = true, cond = false;
+	bool instrumenta = false, first = true, cond = false, iteradorFound = false;
 	bool LoadArray = false;
 	int numLoops = 0, loop = 1;
 	Instruction *PC;
@@ -251,8 +253,10 @@ bool MemoryProfiler::runOnModule(Module &M) {
 		errs() << "FN: " << (*it)->getName() << "\n";
 
 		instrumenta = false;
+		iteradorFound = false;
 
 		for (Function::iterator BB = (*it)->begin(), E = (*it)->end(); BB != E; BB++) {
+			errs() << "BB: " << BB->getName() << "\n";
 			if(BB->getName().compare("omp.loop.init") == 0) {
 				init = BB;
 				LLVMContext &Context = (*it)->getContext();
@@ -265,18 +269,23 @@ bool MemoryProfiler::runOnModule(Module &M) {
 				ProfFn = M.getOrInsertFunction("omp_get_thread_num", UIntTy, NULL);
 				tID = CallInst::Create(ProfFn, "", ++(BB->begin()));
 				//InsertAllocaCall(*it, "clear_instrumentation", ++(++(BB->begin())), tID);
-				//InsertAllocaCall(*it, "alloca_vec", ++(BB->begin()), numT);
+				InsertAllocaCall(*it, "alloca_vec", ++(BB->begin()), numT);
 				//InsertProfilingInitCall(*it, "clear_instrumentation", ++(BB->begin()));
 			}
 			else if(BB->getName().compare("omp.loop.main") == 0) {
-				for (BasicBlock::iterator I=BB->begin(), E= BB->end(); I!=E; ) {
-					Instruction *CurrentInst = I;
-					Instruction *NextInst= ++I;
+				for (Function::iterator BB2 = BB, E = (*it)->end(); BB != E; BB2++) {
+					for (BasicBlock::iterator I=BB2->begin(), E= BB2->end(); I!=E; ) {
+						Instruction *CurrentInst = I;
+						Instruction *NextInst= ++I;
 
-					if (isa<StoreInst>(CurrentInst)) {
-						iteradorPtr = CurrentInst;
+						if (isa<StoreInst>(CurrentInst)) {
+							iteradorPtr = CurrentInst;
+							iteradorFound = true;
+							break;
+						}
+						I=NextInst;
 					}
-					I=NextInst;
+					if(iteradorFound) break;
 				}
 				main = BB;
 			}
@@ -284,7 +293,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 				instrumenta = true;
 				iterador = iteradorPtr->getOperand(1);
 				indexValue = new LoadInst(iterador, "", BB->begin());
-				//InsertSetCall(*it, "setVec", ++(BB->begin()), indexValue, tID);
+				InsertSetCall(*it, "setVec", ++(BB->begin()), indexValue, tID);
 				//InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID);
 				errs() << " === START!\n";
 			}
