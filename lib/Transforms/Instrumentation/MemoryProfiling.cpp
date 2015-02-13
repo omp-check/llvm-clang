@@ -156,6 +156,7 @@ Instruction *InsertGetPC(Function *Fn, const char *FnName, Instruction *Inst) {
 
 void RecursiveCallInstrumentation (Function *F) {
 	Instruction *PC;
+	std::set<StringRef> locals;
 
 	errs() << "\tFUNCAO: " << F->getName() << " - " << F->onlyReadsMemory() <<"\n";
 	Value * indexValue, * tID;
@@ -177,13 +178,16 @@ void RecursiveCallInstrumentation (Function *F) {
 		for (BasicBlock::iterator I=BB->begin(), E= BB->end(); I!=E; ) {
 			Instruction *CurrentInst = I;
 			Instruction *NextInst= ++I;
-
 			if(isa<CallInst>(CurrentInst)) {
 				CallInst *CI = dyn_cast<CallInst>(CurrentInst);
 				Function * f = CI->getCalledFunction();
 				if(f->getName().compare(F->getName()) != 0 && f->hasUWTable() && conj.count(f) == 0) {
 					RecursiveCallInstrumentation(f);
 				}
+			}
+			else if (isa<AllocaInst>(CurrentInst)) {
+				Value *Val = dyn_cast<Value>(CurrentInst);
+				locals.insert(Val->getName());
 			}
 			else if (isa<LoadInst>(CurrentInst) || isa<StoreInst>(CurrentInst)) {
 				NumCalls += 1;
@@ -193,7 +197,9 @@ void RecursiveCallInstrumentation (Function *F) {
 					Addr = LI->getPointerOperand();
 					errs() << "\t\tLOAD: " << *LI << "(" << LI << ") - " << *indexValue << " - " << *tID <<"\n";
 					//PC = InsertGetPC(F, "get_pc", CurrentInst);
-					InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+					if(!locals.count(Addr->getName())) {
+						InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst, 0, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+					}
 				}
 				else
 				{
@@ -201,7 +207,9 @@ void RecursiveCallInstrumentation (Function *F) {
 					Addr = SI->getPointerOperand();
 					errs() << "\t\tSTORE: " << *SI << "(" << SI <<") - " << *indexValue << " - " << *tID <<"\n";
 					//PC = InsertGetPC(F, "get_pc", CurrentInst);
-				     InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+					if(!locals.count(Addr->getName())) {
+				     	InsertProfilingCall(F,"llvm_memory_profiling", Addr, NumCalls, CurrentInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());
+					}
 				}
 			}
 
