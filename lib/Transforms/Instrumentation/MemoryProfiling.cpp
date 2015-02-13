@@ -26,6 +26,7 @@
 #include <set>
 #include <iostream>
 #include <vector>
+#include <set>
 using namespace llvm;
 
 //STATISTIC(NumCallsInserted, "The # of memory calls inserted");
@@ -219,6 +220,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 	}
 
 	std::vector<Function *> v;
+	std::set<StringRef> locals;
 	Function * fn;
 	FILE * f;
 
@@ -320,6 +322,18 @@ bool MemoryProfiler::runOnModule(Module &M) {
 			else if(BB->getName().startswith("for.end")) {
 				errs() << " End loop: " << --loop << "\n";
 			}
+			else if (BB->getName().compare("entry") == 0) {
+				for (BasicBlock::iterator I=BB->begin(), E= BB->end(); I!=E; ) {
+					Instruction *CurrentInst = I;
+					Instruction *NextInst= ++I;
+
+					if (isa<AllocaInst>(CurrentInst)) {
+						Value *Val = dyn_cast<Value>(CurrentInst);
+						locals.insert(Val->getName());
+					}
+					I=NextInst;
+				}
+			}
 
 			if(instrumenta) {
 				errs() << " === INSTRUMENTANDO: " << BB->getName() << " em " << (*it)->getName() <<"\n";
@@ -349,7 +363,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 									}
 								}
 								if(Addr == GEPI) LoadArray = true;
-								if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !LoadArray) {
+								if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !LoadArray && !locals.count(Addr->getName())) {
 									//PC = InsertGetPC(*it, "get_pc", CurrentInst);
 									/*InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC,
 	 (CurrentInst->getDebugLoc()).getLine());*/
@@ -368,7 +382,7 @@ bool MemoryProfiler::runOnModule(Module &M) {
 							Addr = SI->getPointerOperand();
 //							fprintf(store_list, "%p\n", CurrentInst);
 							errs() << "\tSTORE (" << Val->getName() << "): " << *CurrentInst << "(" << CurrentInst << ") - " << *indexValue << " - " << *tID << " - " << Val->getType()->isPointerTy() << "\n";
-							if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private."))) {
+							if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !locals.count(Addr->getName())) {
 								//PC = InsertGetPC(*it, "get_pc", CurrentInst);
 								/*InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());*/
 								InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, CurrentInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());

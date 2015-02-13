@@ -35,8 +35,9 @@ extern "C" {
 #define ERROR_RATE .05
 
 typedef struct instruction{
-	void *inst;
-	int line, tipo;
+	//void *inst;
+	int line;//, tipo;
+	int lastIt;
 }Instruction;
 
 typedef long long hrtime_t;
@@ -44,7 +45,7 @@ scaling_bloom_t *Rbloom;
 scaling_bloom_t *Wbloom;
 //std::set<std::string> IMap;
 //std::map<void *, std::map<void *, char> > IMap;
-std::map<void *, std::map<void *, char> > IMap;
+std::map<void *, std::map<void *, bool> > IMap;
 //scaling_bloom_t *Ibloom;
 int Rglobal_i = 0;
 int Wglobal_i = 0;
@@ -55,6 +56,7 @@ bool clean = false;
 pthread_rwlock_t rwlock, Rbloomlock, Wbloomlock, bloomlock, imaplock;
 
 int *vec = NULL;
+int *lastIt = NULL;
 std::map<void *, Instruction> instructions;
 std::map<void *, Instruction> Winstructions;
 //std::vector<int> instructionsIt;
@@ -70,9 +72,9 @@ void check_and_insert_instruction(void *instr, int line, int tipo) {
 
 	pthread_rwlock_wrlock(&rwlock);
 	if(!added.count(instr)) {
-		temp.inst = instr;
+		//temp.inst = instr;
 		temp.line = line;
-		temp.tipo = tipo;
+		//temp.tipo = tipo;
 		if(tipo) {
 			Winstructions[instr] = temp;
 		}
@@ -129,11 +131,11 @@ static void outputEnd() {
 	int i, n = instructions.size();
 	std::map<void *, Instruction>::iterator it;
 
-	printf("\n\nBEGIN LISTA DE INSTRUCOES:\n");
+	//printf("\n\nBEGIN LISTA DE INSTRUCOES:\n");
 	//for(i=0;i<n;i++)
-	for(it = instructions.begin();it != instructions.end();++it)
-		printf("%p - %d - %d\n", (it->second).inst, (it->second).line, (it->second).tipo);
-	printf("END LISTA DE INSTRUCOES:\n\n");
+	//for(it = instructions.begin();it != instructions.end();++it)
+	//	printf("%p - %d - %d\n", (it->second).inst, (it->second).line, (it->second).tipo);
+	//printf("END LISTA DE INSTRUCOES:\n\n");
 
 	pthread_rwlock_destroy(&rwlock);
 	pthread_rwlock_destroy(&imaplock);
@@ -169,8 +171,10 @@ long int min(long int a, long int b)
 }
 
 void alloca_vec(int size) {
-	if(vec == NULL)
+	if(vec == NULL) {
 		vec = (int *)malloc(size*sizeof(int));
+		lastIt = (int *)malloc(size*sizeof(int));
+	}
 
 	return;
 }
@@ -189,7 +193,7 @@ long int getVec(int id) {
 void * get_pc () { return __builtin_return_address(0); }
 
 void clear_instrumentation () {
-	if(!clean) {
+	/*if(!clean) {
 		pthread_rwlock_wrlock(&bloomlock);
 		if(!clean) {
 			WinstructionsAddr.clear();
@@ -200,7 +204,7 @@ void clear_instrumentation () {
 			clean = true;
 		}
 		pthread_rwlock_unlock(&bloomlock);
-	}
+	}*/
 	return; 
 }
 
@@ -208,9 +212,10 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 	Instruction instruc;
 	bool first = false;
 
-	instruc.inst = inst;
+	//instruc.inst = inst;
 	instruc.line = line;
-	instruc.tipo = 0;
+	instruc.lastIt = index;
+	//instruc.tipo = 0;
 
 	//std::map<void *, std::map<void *, Instruction> >::iterator itWhoAdd = RinstructionsAddr.find(addr);
 
@@ -224,12 +229,19 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 		std::map<void *, Instruction>::iterator itMapThread;
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
-			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+			if(lastIt[id] == index) continue;
+			if(IMap[inst][(*itMapThread).first] != true) {
 				pthread_rwlock_wrlock(&imaplock);
-				if(IMap[inst][(*itMapThread).second.inst] != 't') {
-					IMap[inst][(*itMapThread).second.inst] = 't';
-					IMap[(*itMapThread).second.inst][inst] = 't';
-					fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				if(IMap[inst][(*itMapThread).first] != true) {
+					IMap[inst][(*itMapThread).first] = true;
+					IMap[(*itMapThread).first][inst] = true;
+					//fprintf(stderr,"RAW between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+					if(index > (*itMapThread).second.lastIt) {
+						fprintf(stderr,"RAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).first, (*itMapThread).second.line, addr);
+					}
+					else {
+						fprintf(stderr,"WAR between instructions %p:%d and %p:%d in address %p\n", (*itMapThread).first, (*itMapThread).second.line, inst, line, addr);
+					}
 				}
 				pthread_rwlock_unlock(&imaplock);
 			}
@@ -247,11 +259,13 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 		pthread_rwlock_unlock(&Rbloomlock);
 	}
 	else {
+		
 		if (!(*(RinstructionsAddr.find(addr))).second.count(inst)) {
 			pthread_rwlock_wrlock(&Rbloomlock);
 			(*(RinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
 			pthread_rwlock_unlock(&Rbloomlock);
 		}
+		else RinstructionsAddr[addr][inst].lastIt = index;
 	}	
 
 	return;
@@ -260,9 +274,10 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 void MemWrite(void *addr, int index, int id, void *inst, int line) {
 	Instruction instruc;
 
-	instruc.inst = inst;
+	//instruc.inst = inst;
 	instruc.line = line;
-	instruc.tipo = 0;
+	instruc.lastIt = index;
+	//instruc.tipo = 0;
 
 	//std::map<void *, std::map<void *, Instruction> >::iterator itWhoAdd = WinstructionsAddr.find(addr);
 
@@ -276,12 +291,20 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 		std::map<void *, Instruction>::iterator itMapThread;
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
-			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+			if(lastIt[id] == index) continue;
+			if(IMap[inst][(*itMapThread).first] != true) {
 				pthread_rwlock_wrlock(&imaplock);
-				if(IMap[inst][(*itMapThread).second.inst] != 't') {
-					IMap[inst][(*itMapThread).second.inst] = 't';
-					IMap[(*itMapThread).second.inst][inst] = 't';
-					fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+				if(IMap[inst][(*itMapThread).first] != true) {
+					IMap[inst][(*itMapThread).first] = true;
+					IMap[(*itMapThread).first][inst] = true;
+//					fprintf(stderr,"WAR between lines %d and %d in address %p\n", line, (*itMapThread).second.line, addr);
+					//fprintf(stderr,"WAR between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).first, (*itMapThread).second.line, addr);
+					if(index > (*itMapThread).second.lastIt) {
+						fprintf(stderr,"WAR between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).first, (*itMapThread).second.line, addr);
+					}
+					else {
+						fprintf(stderr,"RAW between instructions %p:%d and %p:%d in address %p\n", (*itMapThread).first, (*itMapThread).second.line, inst, line, addr);
+					}
 				}
 				pthread_rwlock_unlock(&imaplock);
 			}
@@ -297,12 +320,13 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 		std::map<void *, Instruction>::iterator itMapThread;
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
-			if(IMap[inst][(*itMapThread).second.inst] != 't') {
+			if((*itMapThread).second.lastIt == index) continue;
+			if(IMap[inst][(*itMapThread).first] != true) {
 				pthread_rwlock_wrlock(&imaplock);
-				if(IMap[inst][(*itMapThread).second.inst] != 't') {
-					IMap[inst][(*itMapThread).second.inst] = 't';
-					IMap[(*itMapThread).second.inst][inst] = 't';
-					fprintf(stderr,"WAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).second.inst, (*itMapThread).second.line, addr);
+				if(IMap[inst][(*itMapThread).first] != true) {
+					IMap[inst][(*itMapThread).first] = true;
+					IMap[(*itMapThread).first][inst] = true;
+					fprintf(stderr,"WAW between instructions %p:%d and %p:%d in address %p\n", inst, line, (*itMapThread).first, (*itMapThread).second.line, addr);
 				}
 				pthread_rwlock_unlock(&imaplock);
 			}
@@ -324,6 +348,7 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 			(*(WinstructionsAddr.find(addr))).second.insert(std::pair<void *, Instruction>(inst, instruc));
 			pthread_rwlock_unlock(&Wbloomlock);
 		}
+		else WinstructionsAddr[addr][inst].lastIt = index;
 	}
 
 	return;
@@ -340,9 +365,9 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 	std::pair<void *, void*> p;
 	
 	inst = __builtin_return_address(0);
-	instruc.inst = inst;
+	//instruc.inst = inst;
 	instruc.line = line;
-	instruc.tipo = tipo;
+	//instruc.tipo = tipo;
 
 	clean = false;
 
@@ -399,7 +424,7 @@ void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *i
 			}
 		}*/
 
-		
+		lastIt[id] = index;		
 		if(!tipo) {
 			MemRead(addr, index, id, inst, line);
 			/*pthread_rwlock_rdlock(&Wbloomlock);
