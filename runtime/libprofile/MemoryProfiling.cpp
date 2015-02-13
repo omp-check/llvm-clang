@@ -37,7 +37,7 @@ extern "C" {
 typedef struct instruction{
 	//void *inst;
 	unsigned short line;//, tipo;
-	unsigned short lastIt;
+	int lastIt;
 }Instruction;
 
 typedef long long hrtime_t;
