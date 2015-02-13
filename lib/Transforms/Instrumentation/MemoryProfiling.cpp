@@ -371,7 +371,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 									}
 								}
 								if(Addr == GEPI) LoadArray = true;
-								if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !LoadArray && !locals.count(Addr->getName())) {
+								//if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !LoadArray && !locals.count(Addr->getName())) {
+								if(Val->getName().compare("") == 0 && !LoadArray && !locals.count(Addr->getName())) {
 									//PC = InsertGetPC(*it, "get_pc", CurrentInst);
 									/*InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst, 0, indexValue, tID, PC,
 	 (CurrentInst->getDebugLoc()).getLine());*/
@@ -390,7 +391,8 @@ bool MemoryProfiler::runOnModule(Module &M) {
 							Addr = SI->getPointerOperand();
 //							fprintf(store_list, "%p\n", CurrentInst);
 							errs() << "\tSTORE (" << Val->getName() << "): " << *CurrentInst << "(" << CurrentInst << ") - " << *indexValue << " - " << *tID << " - " << Val->getType()->isPointerTy() << "\n";
-							if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !locals.count(Addr->getName())) {
+							//if(Val->getName().compare("") == 0 && !(Addr->getName().endswith(".private.")) && !locals.count(Addr->getName())) {
+							if(Val->getName().compare("") == 0 && !locals.count(Addr->getName())) {
 								//PC = InsertGetPC(*it, "get_pc", CurrentInst);
 								/*InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, NextInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());*/
 								InsertProfilingCall(*it,"llvm_memory_profiling", Addr, NumCalls, CurrentInst,1, indexValue, tID, PC, (CurrentInst->getDebugLoc()).getLine());

@@ -29,20 +29,20 @@
 #include <algorithm>
 
 extern "C" {
-#include "dablooms.h"
+//#include "dablooms.h"
 
 #define CAPACITY 100000
 #define ERROR_RATE .05
 
 typedef struct instruction{
 	//void *inst;
-	int line;//, tipo;
-	int lastIt;
+	unsigned short line;//, tipo;
+	unsigned short lastIt;
 }Instruction;
 
 typedef long long hrtime_t;
-scaling_bloom_t *Rbloom;
-scaling_bloom_t *Wbloom;
+//scaling_bloom_t *Rbloom;
+//scaling_bloom_t *Wbloom;
 //std::set<std::string> IMap;
 //std::map<void *, std::map<void *, char> > IMap;
 std::map<void *, std::map<void *, bool> > IMap;
@@ -57,17 +57,17 @@ pthread_rwlock_t rwlock, Rbloomlock, Wbloomlock, bloomlock, imaplock;
 
 int *vec = NULL;
 int *lastIt = NULL;
-std::map<void *, Instruction> instructions;
-std::map<void *, Instruction> Winstructions;
+//std::map<void *, Instruction> instructions;
+//std::map<void *, Instruction> Winstructions;
 //std::vector<int> instructionsIt;
-std::map<void *, int> instructionsIt;
+//std::map<void *, int> instructionsIt;
 std::map<void *, std::map<void *, Instruction> > RinstructionsAddr;
 std::map<void *, std::map<void *, Instruction> > WinstructionsAddr;
-std::map<void *, std::map<void *, Instruction> > instructionsAddr;
-std::set<void *> added;
-std::set<std::string> addedAddr;
+//std::map<void *, std::map<void *, Instruction> > instructionsAddr;
+//std::set<void *> added;
+//std::set<std::string> addedAddr;
 
-void check_and_insert_instruction(void *instr, int line, int tipo) {
+/*void check_and_insert_instruction(void *instr, int line, int tipo) {
 	Instruction temp;
 
 	pthread_rwlock_wrlock(&rwlock);
@@ -84,7 +84,7 @@ void check_and_insert_instruction(void *instr, int line, int tipo) {
 	pthread_rwlock_unlock(&rwlock);
 
 	return;
-}
+}*/
 
 /* get the number of CPU cycles per microsecond - from Linux /proc filesystem 
  * return<0 on error
@@ -128,8 +128,8 @@ static hrtime_t gethrcycle_x86(void) {
 static hrtime_t timing;
 
 static void outputEnd() {
-	int i, n = instructions.size();
-	std::map<void *, Instruction>::iterator it;
+	//int i, n = instructions.size();
+	//std::map<void *, Instruction>::iterator it;
 
 	//printf("\n\nBEGIN LISTA DE INSTRUCOES:\n");
 	//for(i=0;i<n;i++)
@@ -143,17 +143,18 @@ static void outputEnd() {
 	pthread_rwlock_destroy(&Wbloomlock);
 	pthread_rwlock_destroy(&bloomlock);
   //fprintf(stderr, "outputEnd()\n");
-	free_scaling_bloom(Rbloom);
-	free_scaling_bloom(Wbloom);
+	//free_scaling_bloom(Rbloom);
+	//free_scaling_bloom(Wbloom);
 	free(vec);
+	free(lastIt);
     timing = gethrcycle_x86() - timing;
     fprintf(stderr, "elapsed time: %f sec\n", timing*1.0/(getMHZ_x86()*1000000));
 }
 
 void llvm_start_memory_profiling() {
   //fprintf(stderr, "llvm_start_memory_profiling()\n");
-	Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Rtestbloom.bin");
-	Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Wtestbloom.bin");
+	//Rbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Rtestbloom.bin");
+	//Wbloom = new_scaling_bloom(CAPACITY, ERROR_RATE, "./Wtestbloom.bin");
 	pthread_rwlock_init(&rwlock, NULL);
 	pthread_rwlock_init(&imaplock, NULL);
 	pthread_rwlock_init(&Rbloomlock, NULL);
@@ -229,7 +230,8 @@ void MemRead(void *addr, int index, int id, void *inst, int line) {
 		std::map<void *, Instruction>::iterator itMapThread;
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
-			if(lastIt[id] == index) continue;
+			//if(lastIt[id] == index) continue;
+			if((*itMapThread).second.lastIt == index) continue;
 			if(IMap[inst][(*itMapThread).first] != true) {
 				pthread_rwlock_wrlock(&imaplock);
 				if(IMap[inst][(*itMapThread).first] != true) {
@@ -291,7 +293,8 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 		std::map<void *, Instruction>::iterator itMapThread;
 
 		for (itMapThread = mapThread.begin(); itMapThread != mapThread.end(); ++itMapThread) {
-			if(lastIt[id] == index) continue;
+			//if(lastIt[id] == index) continue;
+			if((*itMapThread).second.lastIt == index) continue;
 			if(IMap[inst][(*itMapThread).first] != true) {
 				pthread_rwlock_wrlock(&imaplock);
 				if(IMap[inst][(*itMapThread).first] != true) {
@@ -355,21 +358,21 @@ void MemWrite(void *addr, int index, int id, void *inst, int line) {
 }
 
 void llvm_memory_profiling(void *addr, int index, int id, unsigned tipo, void *inst, int line) {
-	char string[50] = "0xfakdkaasd_0xajd234h";
-	int elem, i;
-	void *temp, *Lo, *Hi;
-	bool getLock, order;
-	Instruction Tinst;
-	Instruction instruc;
-	std::map<void *, Instruction>::iterator it;
-	std::pair<void *, void*> p;
+	//char string[50] = "0xfakdkaasd_0xajd234h";
+	//int elem, i;
+	//void *temp, *Lo, *Hi;
+	//bool getLock, order;
+	//Instruction Tinst;
+	//Instruction instruc;
+	//std::map<void *, Instruction>::iterator it;
+	//std::pair<void *, void*> p;
 	
 	inst = __builtin_return_address(0);
 	//instruc.inst = inst;
-	instruc.line = line;
+	//instruc.line = line;
 	//instruc.tipo = tipo;
 
-	clean = false;
+	//clean = false;
 
 	//if(!added.count(inst)) {
 	//	check_and_insert_instruction(inst, line, tipo);
